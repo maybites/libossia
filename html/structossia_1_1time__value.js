@@ -1,0 +1,28 @@
+var structossia_1_1time__value =
+[
+    [ "operator=", "structossia_1_1time__value.html#ab30065d7634ce5f3e3611fed0a162818", null ],
+    [ "operator+=", "structossia_1_1time__value.html#a80fc968f2cd5bcecc2b1730b5d0bbab8", null ],
+    [ "operator+=", "structossia_1_1time__value.html#a42971304a1d5ca24a8f091d914fbd17b", null ],
+    [ "operator-=", "structossia_1_1time__value.html#adb55c5a687491a8c82e9d6fbfdf494f6", null ],
+    [ "operator-=", "structossia_1_1time__value.html#a74be86b956944dcaca9cd883ab0f7204", null ],
+    [ "operator+", "structossia_1_1time__value.html#a3d2fa442317f9fab570017c39d0ec53e", null ],
+    [ "operator+", "structossia_1_1time__value.html#ad0e964cd98aeb1a067e44426d03aa216", null ],
+    [ "operator+", "structossia_1_1time__value.html#a1a4793e5e6d78390b0dee291a694fdbf", null ],
+    [ "operator-", "structossia_1_1time__value.html#a55b13aa1a5803459be4d730f357dca6a", null ],
+    [ "operator-", "structossia_1_1time__value.html#a4bc4ee7fb7b9fa1a5faaeaedaca4c7e6", null ],
+    [ "operator+", "structossia_1_1time__value.html#a8213e36a3193524848de22565f1838b2", null ],
+    [ "operator-", "structossia_1_1time__value.html#a606b40e8c31120e8d32265a57c384878", null ],
+    [ "operator-", "structossia_1_1time__value.html#a002d40fc00d9456614689c655f0eddc6", null ],
+    [ "operator*", "structossia_1_1time__value.html#a5743b916f0ed470ac18138adda45210a", null ],
+    [ "operator*", "structossia_1_1time__value.html#aaa0a75cef178bdc2ae6d9305e3d39761", null ],
+    [ "operator*", "structossia_1_1time__value.html#a641f514f74ec95fb0e0e13a2759036e5", null ],
+    [ "operator*", "structossia_1_1time__value.html#a6544c0ff7f9bfc515f690c7ed46d2c7c", null ],
+    [ "operator*", "structossia_1_1time__value.html#a9fe7dcfb9c73b9deb32e39c0f51fc446", null ],
+    [ "operator*", "structossia_1_1time__value.html#a427022bd59164a6ae89741a720e5d467", null ],
+    [ "operator int64_t", "structossia_1_1time__value.html#a29cb30e59ca7e4382862be933455882e", null ],
+    [ "infinite", "structossia_1_1time__value.html#a9d6f251f8d365a99309985f691e08b9e", null ],
+    [ "operator==", "structossia_1_1time__value.html#aaa4430cbbb20ae80352dd4da6362a6e6", null ],
+    [ "operator!=", "structossia_1_1time__value.html#a07fd77ab1bdc08ced9f7b676dd911933", null ],
+    [ "operator/", "structossia_1_1time__value.html#a08207e25223b659cde2ca95b160ab3b0", null ],
+    [ "impl", "structossia_1_1time__value.html#a2a010d8ea0cb753dc8578b4d9b3a9711", null ]
+];

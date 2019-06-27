@@ -1,0 +1,28 @@
+var classossia_1_1curve =
+[
+    [ "abscissa_type", "classossia_1_1curve.html#a175326bdfb29de0a538e43b466aeb102", null ],
+    [ "ordinate_type", "classossia_1_1curve.html#adf5cf70fe0b785c5b0366b1470a29c92", null ],
+    [ "curve_type", "classossia_1_1curve.html#a8b6f3d8ef993b94a28b471cfe9cedd2f", null ],
+    [ "map_type", "classossia_1_1curve.html#a4e105cef1dc27b509a19ec49190d0f80", null ],
+    [ "curve", "classossia_1_1curve.html#ad6d5feb0cc9d58346451b5204db34253", null ],
+    [ "curve", "classossia_1_1curve.html#a57ede0bafa2659b6dc9bfb95ba331176", null ],
+    [ "curve", "classossia_1_1curve.html#ac03cb32a192c4d8a99eee492635252e5", null ],
+    [ "~curve", "classossia_1_1curve.html#acd9be385eeea3815786f0ab23b739b2f", null ],
+    [ "operator=", "classossia_1_1curve.html#a409f1aba24d5d038097859c633a8bde9", null ],
+    [ "operator=", "classossia_1_1curve.html#a581c8ae2a458a4f68f1e7f0ac0721adf", null ],
+    [ "reset", "classossia_1_1curve.html#a05b56923af0b57028000686b1b351234", null ],
+    [ "add_point", "classossia_1_1curve.html#a3d03a63134526139eec4fdae7a6c15ab", null ],
+    [ "remove_point", "classossia_1_1curve.html#a100077a7b6b21f8bfee4343235d3bf86", null ],
+    [ "value_at", "classossia_1_1curve.html#a0f32fca38b3b3a51ed24c54b2604ed0a", null ],
+    [ "get_type", "classossia_1_1curve.html#aabd7b54627459717b5c66e68b2a508a4", null ],
+    [ "get_x0", "classossia_1_1curve.html#abd14e1a9056e94883208ce8592b28d71", null ],
+    [ "get_y0", "classossia_1_1curve.html#ad1ab0e9eb0a3cced8ea06fef1a540869", null ],
+    [ "set_x0", "classossia_1_1curve.html#a11e8575001fd088022e4d8c2f6908dd5", null ],
+    [ "set_y0", "classossia_1_1curve.html#a8da34b2f7c8f71a54f96c9c75a99cab8", null ],
+    [ "get_x0_destination", "classossia_1_1curve.html#ab65e438069e2d261ec19fa8a2b554178", null ],
+    [ "get_y0_destination", "classossia_1_1curve.html#a0798acc6a92c6fa26939df12b57c696f", null ],
+    [ "set_x0_destination", "classossia_1_1curve.html#ae9fd7798830b44e072ae8d2a54c54960", null ],
+    [ "set_y0_destination", "classossia_1_1curve.html#ae0370becf3c821c31450c4b006425901", null ],
+    [ "get_points", "classossia_1_1curve.html#ad9551d7de9c3dfb7a76f5ee7247bdc9f", null ],
+    [ "set_scale_bounds", "classossia_1_1curve.html#ab91e487280e9b6c7ca169dc7f1019a35", null ]
+];
