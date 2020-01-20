@@ -74,9 +74,11 @@ endif()
 if(OSSIA_DATAFLOW)
   ossia_add_test(DataflowTest                "${CMAKE_CURRENT_SOURCE_DIR}/Dataflow/DataflowTest.cpp")
   ossia_add_test(TickMethodTest              "${CMAKE_CURRENT_SOURCE_DIR}/Dataflow/TickMethodTest.cpp")
+  ossia_add_test(TokenRequestTest            "${CMAKE_CURRENT_SOURCE_DIR}/Dataflow/TokenRequestTest.cpp")
+  ossia_add_test(SoundTest                   "${CMAKE_CURRENT_SOURCE_DIR}/Dataflow/SoundTest.cpp")
 endif()
 
-if(OSSIA_QT)
+if(OSSIA_QML)
   # The following lines are used to display the QMLs in the project view of IDEs
   SET(QMLS
     "${CMAKE_CURRENT_SOURCE_DIR}/testdata/http/http_example.qml"
@@ -107,6 +109,7 @@ if(OSSIA_QT)
 endif()
 
 if(OSSIA_PROTOCOL_OSCQUERY)
+  ossia_add_test(HttpRequestTest            "${CMAKE_CURRENT_SOURCE_DIR}/Network/HttpRequestTest.cpp")
   ossia_add_test(OSCQueryTest            "${CMAKE_CURRENT_SOURCE_DIR}/Network/OSCQueryTest.cpp")
   ossia_add_test(OSCQueryColorTest       "${CMAKE_CURRENT_SOURCE_DIR}/Network/OSCQueryColorTest.cpp")
   if(OSSIA_CPP)

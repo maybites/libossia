@@ -1,14 +1,10 @@
 #pragma once
-#include <ossia/audio/audio_parameter.hpp>
+#include <ossia/dataflow/nodes/sound.hpp>
 #include <ossia/dataflow/graph_node.hpp>
-#include <ossia/dataflow/port.hpp>
-#include <ossia/detail/pod_vector.hpp>
-#include <ossia/dataflow/nodes/media.hpp>
 
 namespace ossia::nodes
 {
-
-class sound_ref final : public ossia::nonowning_graph_node
+class sound_ref final : public ossia::sound_node
 {
 public:
   sound_ref()
@@ -20,131 +16,178 @@ public:
   {
   }
 
+  std::string label() const noexcept override
+  {
+    return "sound_ref";
+  }
+
   void set_start(std::size_t v)
   {
     start = v;
-  }
-  void set_start_offset(std::size_t v)
-  {
-    start_offset = v;
   }
   void set_upmix(std::size_t v)
   {
     upmix = v;
   }
+  void set_native_tempo(double v)
+  {
+    tempo = v;
+  }
 
-  void set_sound(const audio_handle& hdl)
+  void set_stretch_mode(ossia::audio_stretch_mode mode)
+  {
+    if(m_mode != mode)
+    {
+      m_mode = mode;
+      m_resampler.reset(0_tv, m_mode, channels(), m_fileSampleRate);
+    }
+  }
+
+  void reset_resampler(time_value date) override
+  {
+    m_resampler.reset(date, m_mode, channels(), m_fileSampleRate);
+  }
+
+  // Used for testing only
+  void set_sound(audio_array data)
+  {
+    m_handle = std::make_shared<audio_data>();
+    m_handle->data = std::move(data);
+    m_data.clear();
+    {
+      m_fileSampleRate = 44100;
+      m_data.assign(m_handle->data.begin(), m_handle->data.end());
+      m_resampler.reset(0_tv, audio_stretch_mode::None, m_handle->data.size(), m_fileSampleRate);
+    }
+  }
+
+  void set_sound(const audio_handle& hdl, int channels, int sampleRate)
   {
     m_handle = hdl;
     m_data.clear();
     if (hdl)
     {
+      m_fileSampleRate = sampleRate;
       m_data.assign(m_handle->data.begin(), m_handle->data.end());
+      m_resampler.reset(0_tv, m_mode, channels, m_fileSampleRate);
     }
   }
 
-  void
-  run(ossia::token_request t, ossia::exec_state_facade e) noexcept override
+  template<typename T>
+  void fetch_audio(int64_t start, int64_t samples_to_write, T** audio_array) const noexcept
   {
-    if (m_data.empty())
-      return;
-    const std::size_t chan = m_data.size();
-    const std::size_t len = m_data[0].size();
-
-    ossia::audio_port& ap = *audio_out.data.target<ossia::audio_port>();
-    ap.samples.resize(chan);
-    int64_t max_N = std::min(t.date.impl, (int64_t)(len - start_offset));
-    if (max_N <= 0)
-      return;
-    const auto samples = max_N - t.prev_date + t.offset.impl;
-    if (samples <= 0)
-      return;
-
-    if (t.date > t.prev_date)
+    const int channels = this->channels();
+    const int file_duration = this->duration();
+    if(m_loops)
     {
-      for (std::size_t i = 0; i < chan; i++)
+      for(int i = 0; i < channels; i++)
       {
-        ap.samples[i].resize(samples);
-        for (int64_t j = t.prev_date; j < max_N; j++)
+        auto& src = m_data[i];
+        T* dst = audio_array[i];
+
+        // TODO add a special case if [0; samples_to_write] don't loop around
+        for(int k = 0; k < samples_to_write; k++)
         {
-          ap.samples[i][j - t.prev_date + t.offset.impl]
-              = m_data[i][j + start_offset];
+          int pos =  m_start_offset_samples + ((start + k) % m_loop_duration_samples);
+          if(pos < file_duration)
+            dst[k] = src[pos];
+          else
+            dst[k] = 0;
         }
-        do_fade(
-            t.start_discontinuous, t.end_discontinuous, ap.samples[i],
-            t.offset.impl, samples);
       }
     }
     else
     {
-      // TODO rewind correctly and add rubberband
-      for (std::size_t i = 0; i < chan; i++)
+      for(int i = 0; i < channels; i++)
       {
-        ap.samples[i].resize(samples);
-        for (int64_t j = t.prev_date; j < max_N; j++)
-        {
-          ap.samples[i][max_N - (j - t.prev_date) + t.offset.impl]
-              = m_data[i][j];
-        }
+        const auto& src = m_data[i];
+        T* dst = audio_array[i];
 
-        do_fade(
-            t.start_discontinuous, t.end_discontinuous, ap.samples[i],
-            max_N + t.offset.impl, t.prev_date + t.offset.impl);
-      }
-    }
-
-    // Upmix
-    if (upmix != 0)
-    {
-      if (upmix < chan)
-      {
-        /* TODO
-    // Downmix
-    switch(upmix)
-    {
-      case 1:
-      {
-        for(std::size_t i = 1; i < chan; i++)
+        if(file_duration >= start + samples_to_write + m_start_offset_samples)
         {
-          if(ap.samples[0].size() < ap.samples[i].size())
-            ap.samples[0].resize(ap.samples[i].size());
-
-          for(std::size_t j = 0; j < ap.samples[i].size(); j++)
-            ap.samples[0][j] += ap.samples[i][j];
-        }
-      }
-      default:
-        // TODO
-        break;
-    }
-    */
-      }
-      else if (upmix > chan)
-      {
-        switch (chan)
-        {
-          case 1:
+          for(int k = 0, pos = start + m_start_offset_samples;
+              k < samples_to_write;
+              k++, pos++)
           {
-            ap.samples.resize(upmix);
-            for (std::size_t i = 1; i < upmix; i++)
-            {
-              ap.samples[i] = ap.samples[0];
-            }
-            break;
+            dst[k] = src[pos];
           }
-          default:
-            // TODO
-            break;
+        }
+        else
+        {
+          const int max = ossia::clamp(file_duration - (start + m_start_offset_samples), (int64_t)0, samples_to_write);
+          for(int k = 0, pos = start + m_start_offset_samples;
+              k < max;
+              k++, pos++)
+          {
+            dst[k] = src[pos];
+          }
+          for(int k = max; k < samples_to_write; k++)
+          {
+            dst[k] = 0;
+          }
         }
       }
-    }
-
-    // Move channels
-    if (start != 0)
-    {
-      ap.samples.insert(ap.samples.begin(), start, ossia::audio_channel{});
     }
   }
+
+  void
+  run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
+  {
+    if (m_data.empty())
+      return;
+
+    // TODO do the backwards play head
+    if(!t.forward())
+      return;
+
+    const std::size_t chan = m_data.size();
+    const std::size_t len = m_data[0].size();
+    ossia::audio_port& ap = *audio_out;
+    ap.samples.resize(chan);
+
+    const auto [samples_to_read, samples_to_write] = snd::sample_info(e.bufferSize(), e.modelToSamples(), t);
+    if(samples_to_write == 0)
+      return;
+
+    assert(samples_to_write > 0);
+
+    const auto samples_offset = t.physical_start(e.modelToSamples());
+    if(t.tempo > 0)
+    {
+      if(t.prev_date < m_prev_date)
+      {
+        reset_resampler(t.prev_date);
+      }
+
+      for (std::size_t i = 0; i < chan; ++i)
+      {
+        ap.samples[i].resize(e.bufferSize());
+      }
+
+      m_loop_duration_samples = m_loop_duration.impl * e.modelToSamples();
+      m_start_offset_samples = m_start_offset.impl * e.modelToSamples();
+
+      double tempo_ratio =  this->tempo / t.tempo;
+      m_resampler.run(*this, t, e,
+                      tempo_ratio,
+                      chan, len,
+                      samples_to_read, samples_to_write, samples_offset,
+                      ap);
+
+      for(std::size_t i = 0; i < chan; i++)
+      {
+          ossia::snd::do_fade(
+              t.start_discontinuous, t.end_discontinuous, ap.samples[i],
+              samples_offset, samples_to_write);
+      }
+
+      ossia::snd::perform_upmix(this->upmix, chan, ap);
+      ossia::snd::perform_start_offset(this->start, ap);
+
+      m_prev_date = t.date;
+    }
+  }
+
   std::size_t channels() const
   {
     return m_data.size();
@@ -155,11 +198,22 @@ public:
   }
 
 private:
-  ossia::small_vector<gsl::span<const double>, 8> m_data;
+  audio_span<float> m_data;
+  resampler m_resampler;
+  ossia::audio_outlet audio_out;
+
   std::size_t start{};
-  std::size_t start_offset{};
   std::size_t upmix{};
-  ossia::outlet audio_out{ossia::audio_port{}};
-  audio_handle m_handle;
+  double tempo{};
+
+  std::size_t m_fileSampleRate{};
+  audio_handle m_handle{};
+  audio_stretch_mode m_mode{};
+
+  time_value m_prev_date{};
+
+  int64_t m_loop_duration_samples{};
+  int64_t m_start_offset_samples{};
 };
 }
+

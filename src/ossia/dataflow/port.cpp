@@ -10,30 +10,19 @@
 namespace ossia
 {
 
-static void
-copy_to_local(const data_type& out, const destination& d, execution_state& in)
-{
-  in.insert(d, out);
-}
-static void
-copy_to_local(data_type&& out, const destination& d, execution_state& in)
-{
-  in.insert(d, std::move(out));
-}
-
 struct push_data
 {
-  const ossia::destination& dest;
+  ossia::net::parameter_base& dest;
   void operator()(const value_port& p) const
   {
     // TODO do the unit conversion
     for (auto& val : p.get_data())
-      dest.address().push_value(val.value);
+      dest.push_value(val.value);
   }
 
   void operator()(const midi_port& p) const
   {
-    auto& proto = dest.address().get_node().get_device().get_protocol();
+    auto& proto = dest.get_node().get_device().get_protocol();
     if (auto midi = dynamic_cast<ossia::net::midi::midi_protocol*>(&proto))
     {
       for (auto& val : p.messages)
@@ -43,52 +32,13 @@ struct push_data
 
   void operator()(const audio_port& p) const
   {
-    if (auto audio = dynamic_cast<ossia::audio_parameter*>(&dest.address()))
+    if (auto audio = dynamic_cast<ossia::audio_parameter*>(&dest))
     {
       audio->push_value(p);
     }
   }
+  void operator()() const noexcept { }
 };
-static void
-copy_to_global(const data_type& out, const destination& d, execution_state& in)
-{
-  switch (out.which())
-  {
-    case 0:
-      push_data{d}(*reinterpret_cast<const ossia::audio_port*>(out.target()));
-      break;
-    case 1:
-      push_data{d}(*reinterpret_cast<const ossia::midi_port*>(out.target()));
-      break;
-    case 2:
-      push_data{d}(*reinterpret_cast<const ossia::value_port*>(out.target()));
-      break;
-    default:
-      break;
-  }
-}
-
-static void
-copy_to_global(data_type&& out, const destination& d, execution_state& in)
-{
-  switch (out.which())
-  {
-    case 0:
-      push_data{d}(
-          std::move(*reinterpret_cast<ossia::audio_port*>(out.target())));
-      break;
-    case 1:
-      push_data{d}(
-          std::move(*reinterpret_cast<ossia::midi_port*>(out.target())));
-      break;
-    case 2:
-      push_data{d}(
-          std::move(*reinterpret_cast<ossia::value_port*>(out.target())));
-      break;
-    default:
-      break;
-  }
-}
 
 void outlet::write(execution_state& e)
 {
@@ -99,24 +49,157 @@ void outlet::write(execution_state& e)
         {
           if (scope & port::scope_t::local)
           {
-            copy_to_local(std::move(data), *addr, e);
+            visit([&] (auto& data) { e.insert(*addr, std::move(data)); });
           }
           else if (scope & port::scope_t::global)
           {
-            copy_to_global(std::move(data), *addr, e);
+            visit(push_data{*addr});
           }
         }
         else
         {
           if (scope & port::scope_t::local)
           {
-            copy_to_local(data, *addr, e);
+            visit([&] (const auto& data) { e.insert(*addr, data); });
           }
           else if (scope & port::scope_t::global)
           {
-            copy_to_global(data, *addr, e);
+            ((const outlet&)(*this)).visit(push_data{*addr});
           }
         }
-      });
+  }, do_nothing_for_nodes{});
 }
+
+value_inlet::~value_inlet()
+{
+
+}
+
+value_outlet::~value_outlet()
+{
+
+}
+audio_inlet::~audio_inlet()
+{
+
+}
+
+audio_outlet::~audio_outlet()
+{
+
+}
+
+void audio_outlet::post_process()
+{
+  // TODO do that better in a sample accurate way
+  if(auto& gain_msg = gain_inlet.data.get_data(); !gain_msg.empty())
+    gain = ossia::convert<float>(gain_msg.back().value);
+
+  // TODO pan
+  switch(data.samples.size())
+  {
+  case 0:
+    return;
+
+  case 1:
+    process_audio_out_mono(*this);
+    break;
+
+  default:
+    process_audio_out_general(*this);
+    break;
+  }
+}
+
+midi_inlet::~midi_inlet()
+{
+
+}
+
+midi_outlet::~midi_outlet()
+{
+
+}
+
+void process_audio_out_mono(ossia::audio_port& i, ossia::audio_outlet& audio_out)
+{
+  ossia::audio_port& o = *audio_out;
+  const double g = audio_out.gain;
+
+  ensure_vector_sizes(i.samples, audio_out.data.samples);
+
+  const auto N = i.samples[0].size();
+  const auto i_ptr = i.samples[0].data();
+  const auto o_ptr  = o.samples[0].data();
+
+  for(std::size_t sample = 0; sample < N; sample++)
+  {
+    o_ptr[sample] = i_ptr[sample] * g;
+  }
+}
+
+void process_audio_out_general(ossia::audio_port& i, ossia::audio_outlet& audio_out)
+{
+  const auto C = i.samples.size();
+  ossia::audio_port& o = *audio_out;
+  const double g = audio_out.gain;
+
+  while(audio_out.pan.size() < C)
+    audio_out.pan.push_back(ossia::sqrt_2 / 2.);
+
+  ensure_vector_sizes(i.samples, audio_out.data.samples);
+
+  for(auto chan = 0U; chan < C; chan++)
+  {
+    auto N = i.samples[chan].size();
+
+    auto i_ptr = i.samples[chan].data();
+    auto o_ptr  = o.samples[chan].data();
+
+    const auto vol = audio_out.pan[chan] * g;
+    for(std::size_t sample = 0; sample < N; sample++)
+    {
+      o_ptr[sample] = i_ptr[sample] * vol;
+    }
+  }
+}
+
+void process_audio_out_mono(ossia::audio_outlet& audio_out)
+{
+  ossia::audio_port& o = *audio_out;
+
+  const double g = audio_out.gain;
+
+  const auto N = o.samples[0].size();
+  const auto o_ptr  = o.samples[0].data();
+
+  for(std::size_t sample = 0; sample < N; sample++)
+  {
+    o_ptr[sample] *= g;
+  }
+}
+
+void process_audio_out_general(ossia::audio_outlet& audio_out)
+{
+  ossia::audio_port& o = *audio_out;
+  const auto C = o.samples.size();
+  const double g = audio_out.gain;
+
+  while(audio_out.pan.size() < C)
+    audio_out.pan.push_back(ossia::sqrt_2 / 2.);
+
+  for(auto chan = 0U; chan < C; chan++)
+  {
+    auto N = o.samples[chan].size();
+
+    auto o_ptr  = o.samples[chan].data();
+
+    const auto vol = audio_out.pan[chan] * g;
+    for(std::size_t sample = 0; sample < N; sample++)
+    {
+      o_ptr[sample] *= vol;
+    }
+  }
+}
+
 }

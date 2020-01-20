@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ossia/editor/scenario/time_value.hpp>
+#include <ossia/dataflow/token_request.hpp>
 
 #include <ossia_export.h>
 
@@ -31,18 +32,15 @@ public:
    \details don't call offset when the parent #time_interval is running
    \param date offset date
    \param pos offset position (in [0;1] relative to parent nominal duration) */
-  virtual void offset(ossia::time_value date, double pos) = 0;
+  void offset(ossia::time_value date);
 
-  virtual void transport(ossia::time_value date, double pos) = 0;
+  void transport(ossia::time_value date);
 
   /*! get a #StateElement from the process depending on its parent
    #time_interval date
    \details don't call state when the parent #time_interval is not running
    */
-  virtual void state(
-      ossia::time_value from, ossia::time_value to, double pos,
-      ossia::time_value tick_offset, double gspeed)
-      = 0;
+  virtual void state(const ossia::token_request&) = 0;
 
   /**
    * @brief start
@@ -84,7 +82,9 @@ public:
    */
   void mute(bool m);
 
-  //! True if the process is not currently muted.
+  /**
+   * @brief True if the process is not currently muted.
+   */
   bool unmuted() const;
 
   /**
@@ -94,15 +94,73 @@ public:
    */
   void enable(bool m);
 
-  //! True if the process is enabled.
+  /**
+   * @brief True if the process is enabled.
+   */
   bool enabled() const;
+
+  /**
+   * @brief Enables looping of the process after every loop_duration
+   */
+  void set_loops(bool b);
+
+  /**
+   * @brief Make the process's data be displaced of v units.
+   */
+  void set_start_offset(time_value v);
+
+  /**
+   * @brief Set how long a single loop lasts.
+   *
+   * Only relevant if loops have been enabled.
+   */
+  void set_loop_duration(time_value v);
 
 protected:
   //! Reimplement this to have a special behaviour on mute
   virtual void mute_impl(bool);
+  virtual void offset_impl(ossia::time_value date) = 0;
 
-private:
+  virtual void transport_impl(ossia::time_value date) = 0;
+
+  time_value m_loop_duration{};
+  time_value m_start_offset{};
+  bool m_loops = false; // TODO bitfields ?
   bool m_unmuted = true;
   bool m_enabled = true;
 };
+
+
+template<typename T>
+class looping_process : public time_process
+{
+public:
+  using time_process::time_process;
+  void state(const ossia::token_request& tok) override
+  {
+    if(!this->m_loops)
+    {
+      if(this->m_start_offset == 0_tv)
+        static_cast<T*>(this)->state_impl(tok);
+      else
+        static_cast<T*>(this)->state_impl(tok.add_offset(this->m_start_offset));
+    }
+    else
+    {
+      tok.loop(this->m_start_offset,
+               this->m_loop_duration,
+               [this] (const token_request& tr) { static_cast<T*>(this)->state_impl(tr); },
+               [this] (const time_value& t) { static_cast<T*>(this)->transport_impl(t); }
+      );
+    }
+  }
+};
+
+enum class sync_status
+{
+  NOT_READY,
+  RETRY,
+  DONE
+};
+
 }

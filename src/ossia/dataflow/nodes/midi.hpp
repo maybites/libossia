@@ -10,8 +10,8 @@ namespace ossia::nodes
 using midi_size_t = uint8_t;
 struct note_data
 {
-  int64_t start{};
-  int64_t duration{};
+  time_value start{};
+  time_value duration{};
 
   midi_size_t pitch{};
   midi_size_t velocity{};
@@ -25,13 +25,13 @@ struct note_comparator
   }
   bool operator()(const note_data& lhs, int64_t rhs) const
   {
-    return lhs.start < rhs;
+    return lhs.start.impl < rhs;
   }
 };
 
 class midi final : public ossia::nonowning_graph_node
 {
-  ossia::outlet midi_out{ossia::midi_port{}};
+  ossia::midi_outlet midi_out;
 
 public:
   using note_set = ossia::flat_multiset<note_data, note_comparator>;
@@ -75,16 +75,19 @@ public:
     }
   }
 
-  void transport(ossia::time_value date, double pos)
+  void transport(ossia::time_value date)
+  {
+    requestTransport = true;
+    m_transport_date = date;
+  }
+
+  void transport_impl(ossia::time_value date)
   {
     // 1. Send note-offs
     m_toStop.insert(m_playingnotes.begin(), m_playingnotes.end());
     m_playingnotes.clear();
 
-    // 2. Send note-ons
-    doTransport = true;
-
-    // 3. Re-add following notes
+    // 2. Re-add following notes
     if (date < m_prev_date)
     {
       if (date == 0_tv)
@@ -120,6 +123,8 @@ public:
       }
       // todo resume current notes
     }
+
+    m_prev_date = date;
   }
 
   void update_note(note_data oldNote, note_data newNote)
@@ -140,19 +145,37 @@ public:
   }
 
   bool mustStop{};
+  bool requestTransport{};
   bool doTransport{};
 
 private:
   void
-  run(ossia::token_request t, ossia::exec_state_facade e) noexcept override
+  run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
   {
-    ossia::midi_port* mp = midi_out.data.target<ossia::midi_port>();
+    struct scope_guard {
+      midi& self;
+      const ossia::token_request& t;
+      ~scope_guard() {
+        self.m_prev_date = t.date;
+
+        if(self.requestTransport)
+        {
+          self.transport_impl(self.m_transport_date);
+          self.requestTransport = false;
+        }
+      }
+    } guard{*this, t};
+
+    ossia::midi_port& mp = *midi_out;
+    const auto samplesratio = e.modelToSamples();
+    const auto tick_start = t.physical_start(samplesratio);
+
 
     for (const note_data& note : m_toStop)
     {
-      mp->messages.push_back(
-          rtmidi::message::note_off(m_channel, note.pitch, note.velocity));
-      mp->messages.back().timestamp = t.offset;
+      mp.messages.push_back(
+          rtmidi::message::note_off(m_channel, note.pitch, 0));
+      mp.messages.back().timestamp = tick_start;
     }
     m_toStop.clear();
 
@@ -160,9 +183,9 @@ private:
     {
       for (auto& note : m_playingnotes)
       {
-        mp->messages.push_back(
-            rtmidi::message::note_off(m_channel, note.pitch, note.velocity));
-        mp->messages.back().timestamp = t.offset;
+        mp.messages.push_back(
+            rtmidi::message::note_off(m_channel, note.pitch, 0));
+        mp.messages.back().timestamp = tick_start;
       }
 
       m_notes = m_orig_notes;
@@ -172,22 +195,26 @@ private:
     }
     else
     {
+      if (m_notes.empty())
+        return;
       if (doTransport)
       {
         auto it = m_notes.begin();
+
         while (it != m_notes.end() && it->start < t.date)
         {
           auto& note = *it;
-          mp->messages.push_back(
+          mp.messages.push_back(
               rtmidi::message::note_on(m_channel, note.pitch, note.velocity));
-          mp->messages.back().timestamp = t.offset;
+          mp.messages.back().timestamp = tick_start;
           m_playingnotes.insert(note);
           it = m_notes.erase(it);
         }
 
         doTransport = false;
       }
-      if (t.date > t.prev_date)
+
+      if (t.forward())
       {
         // First send note offs
         for (auto it = m_playingnotes.begin(); it != m_playingnotes.end();)
@@ -195,12 +222,12 @@ private:
           note_data& note = const_cast<note_data&>(*it);
           auto end_time = note.start + note.duration;
 
-          if (end_time >= t.prev_date && end_time < t.date)
+          if (t.in_range({end_time}))
           {
-            mp->messages.push_back(rtmidi::message::note_off(
-                m_channel, note.pitch, note.velocity));
-            mp->messages.back().timestamp
-                = t.offset + (end_time - t.prev_date);
+            mp.messages.push_back(rtmidi::message::note_off(
+                m_channel, note.pitch, 0));
+            mp.messages.back().timestamp
+                = t.to_physical_time_in_tick(end_time, samplesratio);
 
             it = m_playingnotes.erase(it);
           }
@@ -219,15 +246,15 @@ private:
           if (start_time >= t.prev_date && start_time < t.date)
           {
             // Send note_on
-            mp->messages.push_back(rtmidi::message::note_on(
+            mp.messages.push_back(rtmidi::message::note_on(
                 m_channel, note.pitch, note.velocity));
-            mp->messages.back().timestamp
-                = t.offset + (start_time - t.prev_date);
+            mp.messages.back().timestamp
+                = t.to_physical_time_in_tick(start_time, samplesratio);
 
             m_playingnotes.insert(note);
             it = m_notes.erase(it);
             max_it = std::lower_bound(
-                it, m_notes.end(), t.date + int64_t{1}, note_comparator{});
+                it, m_notes.end(), t.date.impl + 1, note_comparator{});
           }
           else
           {
@@ -236,7 +263,6 @@ private:
         }
       }
     }
-    m_prev_date = t.date;
   }
 
   note_set m_notes;
@@ -244,6 +270,7 @@ private:
   note_set m_playingnotes;
   note_set m_toStop;
   time_value m_prev_date{};
+  time_value m_transport_date{};
 
   int m_channel{};
 };
@@ -253,11 +280,10 @@ class midi_node_process final : public ossia::node_process
 public:
   using ossia::node_process::node_process;
 
-  void transport(ossia::time_value date, double pos) override
+  void transport_impl(ossia::time_value date) override
   {
     midi& n = *static_cast<midi*>(node.get());
-    n.transport(date, pos);
-    node_process::transport(date, pos);
+    n.transport(date);
   }
 
   void stop() override

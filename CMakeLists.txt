@@ -20,6 +20,12 @@ find_package(Threads)
 find_package(Qt5 5.3 COMPONENTS Core)
 
 # Options
+## FIXME : the following variable doesn't have a type
+## BUT cmake seems to suffer from a bug here
+## with `set(OSSIA_3RDPARTY_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty" CACHE PATH "" INTERNAL)`
+## the variable looks like : `/tmp/DpvCam/3rdparty/libossia/3rdparty;CACHE;STRING;;INTERNAL`
+## which is a list instead of a single PATH value
+## at least with CMake 15.2
 set(OSSIA_3RDPARTY_FOLDER "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty" CACHE "" INTERNAL)
 include(OssiaOptions)
 

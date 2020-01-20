@@ -8,7 +8,7 @@ namespace ossia::nodes
 {
 struct rand_float final : public ossia::nonowning_graph_node
 {
-  ossia::outlet value_out{ossia::value_port{}};
+  ossia::value_outlet value_out;
 
 public:
   std::uniform_real_distribution<float> dist;
@@ -17,11 +17,11 @@ public:
     m_outlets.push_back(&value_out);
   }
 
-  void run(ossia::token_request t, ossia::exec_state_facade) noexcept override
+  void run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
   {
     thread_local std::mt19937 gen;
-    auto& out = *value_out.data.target<ossia::value_port>();
-    out.write_value(dist(gen), t.tick_start());
+    auto& out = *value_out.target<ossia::value_port>();
+    out.write_value(dist(gen), e.physical_start(t));
   }
 };
 }

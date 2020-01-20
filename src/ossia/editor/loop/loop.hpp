@@ -22,7 +22,7 @@ class graph;
  * Then the main interval executes.
  * Then the end time_sync is checked.
  */
-class OSSIA_EXPORT loop final : public time_process
+class OSSIA_EXPORT loop final : public looping_process<loop>
 {
 public:
   /*! factory
@@ -64,19 +64,21 @@ public:
   const time_sync& get_end_timesync() const;
   time_sync& get_end_timesync();
 
-  void transport(ossia::time_value offset, double pos) override;
-  void offset(ossia::time_value, double pos) override;
-  void state(
-      ossia::time_value from, ossia::time_value to, double pos,
-      ossia::time_value tick_offset, double gspeed) override;
+  void transport_impl(ossia::time_value offset) override;
+  void offset_impl(ossia::time_value) override;
+  void state_impl(ossia::token_request);
 
 private:
-  bool process_sync(
-      ossia::time_sync& node, ossia::time_event& event, bool pending,
+  ossia::sync_status process_sync(
+      ossia::time_sync& node, const ossia::token_request& tk,
+      ossia::time_event& event, bool pending,
       bool maxReached);
   void make_happen(time_event& event);
   void make_dispose(time_event& event);
   void mute_impl(bool) override;
+
+  sync_status quantify_time_sync(time_sync& sync, const ossia::token_request& tk) noexcept;
+  sync_status trigger_quantified_time_sync(time_sync& sync, bool& maximalDurationReached) noexcept;
 
   time_sync m_startNode;
   time_sync m_endNode;
@@ -85,5 +87,9 @@ private:
   time_interval m_interval;
 
   ossia::time_value m_lastDate{ossia::Infinite};
+  optional<ossia::time_value> m_sync_date{};
+  bool is_simple() const noexcept;
+  void simple_tick(ossia::token_request& req, time_value tick_amount, const time_value& itv_dur);
+  void general_tick(const ossia::token_request& req, const ossia::time_value prev_last_date, ossia::time_value tick_amount);
 };
 }

@@ -65,22 +65,23 @@ public:
 
 private:
   void
-  run(ossia::token_request t, ossia::exec_state_facade e) noexcept override
+  run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
   {
     if (!m_drive)
       return;
+    const auto tick_start = e.physical_start(t);
 
-    ossia::value_port* vp = value_out.data.target<ossia::value_port>();
-    vp->write_value(
+    ossia::value_port& vp = *value_out;
+    vp.write_value(
         ossia::apply(
-            ossia::detail::compute_value_visitor{t.position,
+            ossia::detail::compute_value_visitor{t.position(),
                                                  ossia::val_type::FLOAT},
             m_drive),
-        t.tick_start());
+        tick_start);
   }
 
   ossia::behavior m_drive;
-  ossia::outlet value_out{ossia::value_port{}};
+  ossia::value_outlet value_out;
 };
 
 class automation_process final : public ossia::node_process

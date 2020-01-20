@@ -179,6 +179,16 @@ void copy_if(const Vector1& source, Vector2& destination, Pred predicate)
       predicate);
 }
 
+template <typename T, typename K>
+auto last_before(T&& container, const K& k)
+{
+  auto it = container.upper_bound(k);
+  if (it != container.begin()) {
+    std::advance(it, -1);
+  }
+  return it;
+}
+
 // http://stackoverflow.com/a/26902803/1495627
 template <class F, class... Ts, std::size_t... Is>
 void for_each_in_tuple(
@@ -196,6 +206,45 @@ void for_each_in_tuple(const std::tuple<Ts...>& tuple, F&& func)
 
 template <class F>
 void for_each_in_tuple(const std::tuple<>& tuple, const F& func)
+{
+}
+
+
+template <class F,
+          template<class...> class T1, class... T1s, std::size_t... I1s,
+          template<class...> class T2, class... T2s, std::size_t... I2s>
+void for_each_in_tuples(
+    T1<T1s...>&& t1,
+    T2<T2s...>&& t2,
+    F&& func,
+    std::index_sequence<I1s...>,
+    std::index_sequence<I2s...>
+    )
+{
+  (std::forward<F>(func)
+     (
+        std::get<I1s>(std::forward<T1<T1s...>>(t1)),
+        std::get<I2s>(std::forward<T2<T2s...>>(t2))
+     ),
+   ...);
+}
+
+template <class F,
+          template<class...> class T1, class... T1s,
+          template<class...> class T2, class... T2s>
+void for_each_in_tuples(T1<T1s...>&& t1, T2<T2s...>&& t2, F&& func)
+{
+  for_each_in_tuples(
+        std::forward<T1<T1s...>>(t1),
+        std::forward<T2<T2s...>>(t2),
+        std::forward<F>(func),
+        std::make_index_sequence<sizeof...(T1s)>(),
+        std::make_index_sequence<sizeof...(T2s)>()
+        );
+}
+
+template <class F>
+void for_each_in_tuples(const std::tuple<>& t1, const std::tuple<>& t2, const F& func)
 {
 }
 

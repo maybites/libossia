@@ -9,7 +9,7 @@
 #include <ossia/audio/audio_parameter.hpp>
 #include <ossia/dataflow/node_process.hpp>
 #include <ossia/dataflow/graph/graph_static.hpp>
-#include <ossia/dataflow/nodes/sound.hpp>
+#include <ossia/dataflow/nodes/sound_ref.hpp>
 #include <ossia/editor/loop/loop.hpp>
 #include <ossia/editor/scenario/scenario.hpp>
 #include <ossia/network/generic/generic_device.hpp>
@@ -46,8 +46,8 @@ struct test_loop
   ossia::loop parent;
 
   ossia::audio_parameter* aparam{};
-  ossia::nodes::sound* snd1{};
-  ossia::nodes::sound* snd2{};
+  ossia::nodes::sound_ref* snd1{};
+  ossia::nodes::sound_ref* snd2{};
   ~test_loop()
   {
     g.clear();
@@ -86,8 +86,8 @@ struct test_loop
     {
       auto child = std::make_shared<loop>(1_tv, time_interval::exec_callback{}, time_event::exec_callback{}, time_event::exec_callback{});
 
-      auto snd = std::make_shared<ossia::nodes::sound>(); snd1 = snd.get();
-      snd->set_sound(std::vector<ossia::double_vector>{ {1., 2., 3., 4.} });
+      auto snd = std::make_shared<ossia::nodes::sound_ref>(); snd1 = snd.get();
+      snd->set_sound(std::vector<ossia::float_vector>{ {1., 2., 3., 4.} });
       child->get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
       i1->add_time_process(child);
 
@@ -98,8 +98,8 @@ struct test_loop
     {
       auto child = std::make_shared<loop>(2_tv, time_interval::exec_callback{}, time_event::exec_callback{}, time_event::exec_callback{});
 
-      auto snd = std::make_shared<ossia::nodes::sound>(); snd2 = snd.get();
-      snd->set_sound(std::vector<ossia::double_vector>{ {5.,6.,7.,8.} });
+      auto snd = std::make_shared<ossia::nodes::sound_ref>(); snd2 = snd.get();
+      snd->set_sound(std::vector<ossia::float_vector>{ {5.,6.,7.,8.} });
       child->get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
       i2->add_time_process(child);
 
@@ -113,13 +113,12 @@ struct test_loop
 }
 using namespace ossia;
 
-static void interval_callback(double position, ossia::time_value date)
+static void interval_callback(ossia::time_value date)
 {
 }
 
 static void event_callback(time_event::status newStatus)
 {
-  std::cout << "Event : " << "new status received" << std::endl;
 }
 
 /*! test life cycle and accessors functions */
@@ -160,7 +159,7 @@ TEST_CASE ("test_inf", "test_inf")
     loop l{0_tv, time_interval::exec_callback{}, time_event::exec_callback{},
            time_event::exec_callback{}};
     l.start();
-    l.state(0_tv, 1_tv, 0, 0_tv, 1.);
+    l.state(simple_token_request{0_tv, 1_tv});
   }());
 }
 
@@ -178,15 +177,15 @@ TEST_CASE ("test_inf_trigger", "test_inf_trigger")
   l.get_end_timesync().set_expression(::make_expression_test(b));
 
   l.start();
-  l.state(0_tv, 10_tv, 0, 0_tv, 1.);
+  l.state(simple_token_request{0_tv, 10_tv});
   REQUIRE(l.get_time_interval().get_date() == 10_tv);
-  l.state(10_tv, 20_tv, 0, 0_tv, 1.);
+  l.state(simple_token_request{10_tv, 20_tv});
   REQUIRE(l.get_time_interval().get_date() == 20_tv);
   b = true;
-  l.state(20_tv, 25_tv, 0, 0_tv, 1.);
+  l.state(simple_token_request{20_tv, 25_tv});
   REQUIRE(l.get_time_interval().get_date() == 0_tv);
   b = false;
-  l.state(25_tv, 30_tv, 0, 0_tv, 1.);
+  l.state(simple_token_request{25_tv, 30_tv});
   REQUIRE(l.get_time_interval().get_date() == 5_tv);
 
 }
@@ -197,56 +196,54 @@ TEST_CASE ("test_loop_sound", "test_loop_sound")
   {
     loop l{4_tv, time_interval::exec_callback{}, time_event::exec_callback{},
            time_event::exec_callback{}};
-    auto snd = std::make_shared<ossia::nodes::sound>();
-    snd->set_sound(std::vector<ossia::double_vector>{ {0.1, 0.2, 0.3, 0.4} });
+    auto snd = std::make_shared<ossia::nodes::sound_ref>();
+    snd->set_sound(std::vector<ossia::float_vector>{ {0.1, 0.2, 0.3, 0.4} });
     l.get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
 
     l.start();
-    l.state(0_tv, 1_tv, 0, 0_tv, 1.);
-    std::cerr << snd->requested_tokens.size();
+    l.state(simple_token_request{0_tv, 1_tv});
     REQUIRE((int)snd->requested_tokens.size() == (int)2);
-    std::cerr << snd->requested_tokens[0];
-    std::cerr << snd->requested_tokens[1];
-    REQUIRE((snd->requested_tokens[0] == token_request{0_tv, 0_tv, 0., 0_tv, 1.}));
-    REQUIRE((snd->requested_tokens[1] == token_request{0_tv, 1_tv, 0.25, 0_tv, 1.}));
+    REQUIRE((snd->requested_tokens[0] == simple_token_request{0_tv, 0_tv}));
+    REQUIRE((snd->requested_tokens[1] == simple_token_request{0_tv, 1_tv}));
     l.stop();
   }
 
   {
     loop l{4_tv, time_interval::exec_callback{}, time_event::exec_callback{},
            time_event::exec_callback{}};
-    auto snd = std::make_shared<ossia::nodes::sound>();
-    snd->set_sound(std::vector<ossia::double_vector>{ {0.1, 0.2, 0.3, 0.4} });
+    auto snd = std::make_shared<ossia::nodes::sound_ref>();
+    snd->set_sound(std::vector<ossia::float_vector>{ {0.1, 0.2, 0.3, 0.4} });
     l.get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
 
     l.start();
-    l.state(0_tv, 5_tv, 0, 0_tv, 1.);
-    std::cerr << snd->requested_tokens;
+    l.state(simple_token_request{0_tv, 5_tv});
     REQUIRE((int)snd->requested_tokens.size() == (int)4);
-    REQUIRE((snd->requested_tokens[0] == token_request{0_tv, 0_tv, 0, 0_tv, 1.}));
-    REQUIRE((snd->requested_tokens[1] == token_request{0_tv, 4_tv, 1, 0_tv, 1.}));
-    REQUIRE((snd->requested_tokens[2] == token_request{0_tv, 0_tv, 0, 4_tv, 1.}));
-    REQUIRE((snd->requested_tokens[3] == token_request{0_tv, 1_tv, 0.25, 4_tv, 1.}));
+    REQUIRE(snd->requested_tokens[0] == simple_token_request{0_tv, 0_tv, 0_tv});
+    REQUIRE(snd->requested_tokens[1] == simple_token_request{0_tv, 4_tv, 0_tv});
+    REQUIRE(snd->requested_tokens[2] == simple_token_request{0_tv, 0_tv, 4_tv});
+    REQUIRE(snd->requested_tokens[3] == simple_token_request{0_tv, 1_tv, 4_tv});
     l.stop();
   }
 
   {
     loop l{4_tv, time_interval::exec_callback{}, time_event::exec_callback{},
            time_event::exec_callback{}};
-    auto snd = std::make_shared<ossia::nodes::sound>();
-    snd->set_sound(std::vector<ossia::double_vector>{ {0.1, 0.2, 0.3, 0.4} });
+    auto snd = std::make_shared<ossia::nodes::sound_ref>();
+    snd->set_sound(std::vector<ossia::float_vector>{ {0.1, 0.2, 0.3, 0.4} });
     l.get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
 
     l.start();
-    l.state(0_tv, 9_tv, 0, 0_tv, 1.);
+    l.state(simple_token_request{0_tv, 9_tv});
     ossia::execution_state e;
+    e.bufferSize = 9;
+
     for(auto tk : snd->requested_tokens)
       ((ossia::graph_node*)snd.get())->run(tk, {e});
-    auto op = snd->outputs()[0]->data.target<audio_port>()->samples;
-    audio_vector expected{audio_channel{0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1}};
+    auto op = snd->outputs()[0]->target<audio_port>()->samples;
+    audio_vector expected{audio_channel{0.1f, 0.2f, 0.3f, 0.4f, 0.1f, 0.2f, 0.3f, 0.4f, 0.1f}};
     for(int i = 0; i < 9; i++)
     {
-      REQUIRE(expected[0][i] == op[0][i]);
+      REQUIRE(expected[0][i] - op[0][i] < 0.00001);
     }
     REQUIRE(op == expected);
   }
@@ -274,27 +271,27 @@ TEST_CASE ("test_subloop", "test_subloop")
   auto child = std::make_shared<loop>(3_tv, time_interval::exec_callback{}, time_event::exec_callback{}, time_event::exec_callback{});
   parent.get_time_interval().add_time_process(child);
 
-  auto snd = std::make_shared<ossia::nodes::sound>();
-  snd->set_sound(std::vector<ossia::double_vector>{ {0.1, 0.2, 0.3, 0.4} });
+  auto snd = std::make_shared<ossia::nodes::sound_ref>();
+  snd->set_sound(std::vector<ossia::float_vector>{ {0.1, 0.2, 0.3, 0.4} });
   child->get_time_interval().add_time_process(std::make_shared<ossia::node_process>(snd));
 
   parent.start();
-  parent.state(0_tv, 14_tv, 0., 0_tv, 1.);
+  parent.state(simple_token_request{0_tv, 14_tv});
 
   ossia::execution_state e;
+  e.bufferSize = 14;
   for(auto tk : snd->requested_tokens)
     ((ossia::graph_node*)snd.get())->run(tk, {e});
 
 
   audio_vector expected{audio_channel{0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1, 0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.1}};
 
-  auto op = snd->outputs()[0]->data.target<audio_port>()->samples;
+  auto op = snd->outputs()[0]->target<audio_port>()->samples;
 
   for(int i = 0; i < 14; i++)
   {
-    REQUIRE(expected[0][i] == op[0][i]);
+    REQUIRE(expected[0][i] - op[0][i] < 0.00001);
   }
-  REQUIRE(op == expected);
 }
 
 
@@ -302,16 +299,7 @@ TEST_CASE ("test_subloops_in_scenario", "test_subloops_in_scenario")
 {
   test_loop l;
   l.parent.start();
-  l.parent.state(0_tv, 14_tv, 0., 0_tv, 1.);
-
-  std::cerr << "SOUND 1 tokens";
-  for(auto t : l.snd1->requested_tokens)
-    std::cerr << t;
-
-  std::cerr << "SOUND 2 tokens";
-  for(auto t : l.snd2->requested_tokens)
-    std::cerr << t;
-
+  l.parent.state(simple_token_request{0_tv, 14_tv});
 
   audio_vector expected{ossia::audio_channel{1., 1., 1., 1., 5., 6., 5., 1., 1., 1., 1., 5., 6., 5.}};
 
@@ -319,6 +307,7 @@ TEST_CASE ("test_subloops_in_scenario", "test_subloops_in_scenario")
   l.aparam->audio.resize(1);
   l.aparam->audio[0] = {res.data(), (int64_t)res.size()};
   ossia::execution_state e;
+  e.bufferSize = 14;
   l.g.state(e);
   e.commit();
 
@@ -327,10 +316,18 @@ TEST_CASE ("test_subloops_in_scenario", "test_subloops_in_scenario")
 
   REQUIRE(op.size() > 0);
   auto chan = op[0];
+
   REQUIRE(op[0].size() >= 14);
+
+  // Problème :  dans sound_ref on écrit
+  // auto samples_to_write = std::abs(e.bufferSize() - t.offset);
+  // mais si on ne tick que 3 tv, on voudrait en sortie n'avoir que ce qui correspond à ces 3 tv.
+  // mais : si speed == 0.5 -> on n'a qu 1.5 tv
+  // -> il faut multiplier par 1/speed
+
   for(int i = 0; i < 14; i++)
   {
-    REQUIRE(chan[i] == expected[0][i]);
+    REQUIRE(chan[i] - expected[0][i] < 0.000001);
   }
   for(int i = 14; i < chan.size(); i++)
   {
@@ -350,7 +347,7 @@ TEST_CASE ("test_subloops_in_scenario_1by1", "test_subloops_in_scenario_1by1")
 
     float* chan = audio_data[0] + i - 1 ;
     l.aparam->audio = {{chan, 64 - i}};
-    l.parent.state(ossia::time_value{i - 1}, ossia::time_value{i}, 0., ossia::time_value{0}, 1.);
+    l.parent.state(simple_token_request{ossia::time_value{i - 1}, ossia::time_value{i}});
     e.begin_tick();
     l.g.state(e);
     e.commit();
@@ -365,3 +362,137 @@ TEST_CASE ("test_subloops_in_scenario_1by1", "test_subloops_in_scenario_1by1")
   }
 }
 
+
+
+TEST_CASE ("test_musical_bar", "test_musical_bar")
+{
+  using namespace ossia;
+
+  loop l{ossia::Infinite, time_interval::exec_callback{}, time_event::exec_callback{}, time_event::exec_callback{}};
+
+  auto& c = l.get_time_interval();
+  c.set_min_duration(0_tv);
+  c.set_nominal_duration(1234_tv);
+  c.set_max_duration(ossia::Infinite);
+  auto& t1 = l.get_end_timesync();
+
+  bool b = false;
+  t1.set_expression(::make_expression_test(b));
+  // assume sampling rate is 44100 -> a quarter note is 22050
+  t1.set_sync_rate(1, 22050);
+
+  c.add_time_process(dummy_process());
+
+  l.start();
+  // Tick a bit ; nothing happens
+  {
+    l.state(simple_token_request{0_tv, 1000_tv});
+
+    auto& req = c.node->requested_tokens;
+
+    // TODO why isn't there a tick for the (0,0) case
+
+    REQUIRE((int)req.size() == (int)1);
+    REQUIRE((req[0] == simple_token_request{0_tv, 1000_tv}));
+    req.clear();
+  }
+
+  // Expression becomes true, still nothing :
+  b = true;
+
+  {
+    l.state(simple_token_request{1000_tv, 2000_tv});
+
+    auto& req = c.node->requested_tokens;
+
+    REQUIRE((int)req.size() == (int)1);
+    REQUIRE((req[0] == simple_token_request{1000_tv, 2000_tv}));
+
+    req.clear();
+  }
+
+
+  // Tick enough to go past the quantification ratio
+  {
+    ossia::token_request tk;
+    tk.prev_date = 2000_tv;
+    tk.date = 100000_tv;
+    tk.parent_duration = 100000_tv;
+    tk.offset = {};
+    tk.tempo = 120;
+    tk.speed = 1.;
+    tk.musical_start_last_bar = 0.;
+    tk.musical_end_last_bar = 4.;
+    tk.musical_start_position = 2000. / 22050.;
+    tk.musical_end_position = 100000. / 22050.;
+    tk.signature = {4, 4};
+
+    l.state(tk);
+
+    auto& req = c.node->requested_tokens;
+
+    std::cout << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Requests: \n"
+              <<  req
+              << std::endl;
+
+    REQUIRE((int)req.size() == (int)2);
+
+    REQUIRE(req[0] == simple_token_request{2000_tv, 88199_tv});
+    REQUIRE(req[1] == simple_token_request{0_tv, 100000_tv - 88200_tv + 1_tv});
+
+    REQUIRE(c.get_date() == 11801_tv);
+
+    req.clear();
+  }
+
+  // Tick a bit again
+  {
+    l.state(simple_token_request{100000_tv, 102000_tv});
+
+    auto& req = c.node->requested_tokens;
+
+    REQUIRE((int)req.size() == (int)1);
+    REQUIRE((req[0] == simple_token_request{11801_tv, 13801_tv}));
+
+    req.clear();
+  }
+
+  // And again enough to go past the quantification ratio
+
+  {
+    ossia::token_request tk;
+    tk.prev_date = 102000_tv;
+    tk.date = 200000_tv;
+    tk.parent_duration = 100000_tv;
+    tk.offset = {};
+    tk.tempo = 120;
+    tk.speed = 1.;
+    tk.musical_start_last_bar = 4.;
+    tk.musical_end_last_bar = 8.;
+    tk.musical_start_position = 102000. / 22050.;
+    tk.musical_end_position = 200000. / 22050.;
+    tk.signature = {4, 4};
+
+    l.state(tk);
+
+    auto& req = c.node->requested_tokens;
+
+    std::cout << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Requests: \n"
+              <<  req
+              << std::endl;
+
+    REQUIRE((int)req.size() == (int)2);
+
+    REQUIRE(req[0] == simple_token_request{13801_tv, 88199_tv});
+    REQUIRE(req[1] == simple_token_request{0_tv, 98000_tv - (88199_tv - 13801_tv) + 1_tv});
+
+    REQUIRE(c.get_date() == 11801_tv);
+
+    req.clear();
+  }
+
+}

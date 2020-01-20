@@ -6,6 +6,7 @@
 #include <ossia/dataflow/graph_edge.hpp>
 #include <ossia/dataflow/graph_node.hpp>
 #include <ossia/dataflow/node_process.hpp>
+#include <ossia/detail/algorithms.hpp>
 
 namespace ossia
 {
@@ -16,20 +17,15 @@ node_process::node_process(node_ptr n)
   node = std::move(n);
 }
 
-void node_process::offset(time_value date, double pos)
+void node_process::offset_impl(time_value date)
 {
 }
 
-void node_process::transport(time_value date, double pos)
+void node_process::transport_impl(time_value date)
 {
 }
 
-void node_process::state(
-    ossia::time_value from, ossia::time_value to, double relative_position,
-    time_value tick_offset, double gspeed)
-{
-  node->request({from, to, relative_position, tick_offset, gspeed});
-}
+
 
 void node_process::start()
 {
@@ -38,6 +34,7 @@ void node_process::start()
 
 void node_process::stop()
 {
+  if(node) node->all_notes_off();
 }
 
 void node_process::pause()
@@ -86,11 +83,11 @@ void graph_edge::init() noexcept
 
     if (auto delay = con.target<delayed_glutton_connection>())
     {
-      ossia::apply(init_delay_line{delay->buffer}, out->data);
+      out->visit(init_delay_line{delay->buffer});
     }
     else if (auto sdelay = con.target<delayed_strict_connection>())
     {
-      ossia::apply(init_delay_line{sdelay->buffer}, out->data);
+      out->visit(init_delay_line{sdelay->buffer});
     }
   }
 }
@@ -135,7 +132,7 @@ bool graph_node::consumes(const execution_state&) const noexcept
   return false;
 }
 
-void graph_node::run(token_request t, exec_state_facade) noexcept
+void graph_node::run(const token_request& t, exec_state_facade) noexcept
 {
 }
 
@@ -171,7 +168,7 @@ bool graph_node::has_local_inputs(const execution_state& st) const noexcept
           [&](ossia::net::parameter_base* addr, bool) {
             if (!b || st.in_local_scope(*addr))
               b = true;
-          });
+          }, do_nothing_for_nodes{});
 
       if (b)
         return true;
@@ -200,19 +197,25 @@ void graph_node::clear() noexcept
     }
   }
 
+  for (auto outl : m_outlets)
+  {
+    // Audio outlets add two inlets at the end
+    if(outl->which() == ossia::audio_port::which)
+    {
+      m_inlets.pop_back();
+      m_inlets.pop_back();
+    }
+    delete outl;
+  }
   for (auto inl : m_inlets)
   {
     delete inl;
-  }
-  for (auto outl : m_outlets)
-  {
-    delete outl;
   }
   m_inlets.clear();
   m_outlets.clear();
 }
 
-void graph_node::request(token_request req) noexcept
+void graph_node::request(const token_request& req) noexcept
 {
   /*
   if(std::abs(req.date - req.prev_date) > 1000)
@@ -237,5 +240,20 @@ nonowning_graph_node::~nonowning_graph_node()
 
 void nonowning_graph_node::clear() noexcept
 {
+  for (auto inl : m_inlets)
+  {
+    for (ossia::graph_edge* e : inl->sources)
+    {
+      e->clear();
+    }
+  }
+  for (auto outl : m_outlets)
+  {
+    for (ossia::graph_edge* e : outl->targets)
+    {
+      e->clear();
+    }
+  }
+
 }
 }

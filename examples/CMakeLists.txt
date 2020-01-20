@@ -49,6 +49,9 @@ if(OSSIA_PROTOCOL_OSCQUERY)
   if(OSSIA_PROTOCOL_LEAPMOTION)
     ossia_add_example(network_leapmotion_oscquery "${CMAKE_CURRENT_SOURCE_DIR}/Network/LeapToOscQuery.cpp")
   endif()
+  if(OSSIA_PROTOCOL_LIBMAPPER)
+    ossia_add_example(network_libmapper "${CMAKE_CURRENT_SOURCE_DIR}/Network/Libmapper.cpp")
+  endif()
 
   if(OSSIA_QT)
     find_package(Qt5 COMPONENTS Widgets)
@@ -63,3 +66,17 @@ ossia_add_example(preset_print_namespace "${CMAKE_CURRENT_SOURCE_DIR}/Preset/Pri
 ossia_add_example(export_namespace_to_json "${CMAKE_CURRENT_SOURCE_DIR}/Preset/Export_namespace_to_json.cpp")
 ossia_add_example(logger "${CMAKE_CURRENT_SOURCE_DIR}/Common/Logger.cpp")
 
+find_package(OpenCV
+  COMPONENTS
+  core
+  videoio
+  imgcodecs
+  imgproc)
+
+if(OpenCV_FOUND)
+  ossia_add_example(jpeg_streamer "${CMAKE_CURRENT_SOURCE_DIR}/Web/JpegStreamer.cpp")
+  target_link_libraries(ossia_jpeg_streamer_example PRIVATE ${OpenCV_LIBS})
+
+  ossia_add_example(double_ws_server "${CMAKE_CURRENT_SOURCE_DIR}/Web/DoubleWSServer.cpp")
+  target_link_libraries(ossia_double_ws_server_example PRIVATE ${OpenCV_LIBS})
+endif()

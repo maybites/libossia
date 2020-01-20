@@ -1,7 +1,7 @@
 #pragma once
 #include <ossia/detail/config.hpp>
-#include <boost/math/constants/constants.hpp>
 #include <cmath>
+#include <algorithm>
 
 #include <utility>
 /**
@@ -63,6 +63,25 @@ inline constexpr size_t constexpr_log2(size_t n) noexcept
   return ((n < 2) ? 0 : 1 + constexpr_log2(n / 2));
 }
 
+template<typename T>
+inline constexpr size_t constexpr_abs(T n) noexcept
+{
+  return n < 0 ? -n : n;
+}
+
+// https://github.com/a2flo/floor/blob/master/constexpr/const_math.hpp#L251
+template<typename T>
+inline constexpr int64_t constexpr_floor(T val) noexcept
+{
+  const auto val_int = (int64_t) val;
+  const T fval_int = (T)val_int;
+  return (val >= (T)0
+          ? fval_int
+          : (val == fval_int
+             ? val
+             : fval_int - 1));
+}
+
 /**
  * @brief clamp_min Returns the value bounded by a min
  */
@@ -120,5 +139,17 @@ template <class T>
 OSSIA_INLINE constexpr std::pair<T, T> div(T num, T denom) noexcept
 {
   return {num / denom, num % denom};
+}
+
+
+// normalized means x in [min, min + range] => f(x) in [0; 1] with log increase
+OSSIA_INLINE float log_to_normalized(float min, float range, float val) noexcept
+{
+  return val <= min ? 0.f : std::log1pf( val - min) / std::log1pf(range);
+}
+OSSIA_INLINE float normalized_to_log(float min, float range, float val) noexcept
+{
+  const float res = std::expm1f(val * std::log1pf(range)) + min;
+  return std::min(res, min + range);
 }
 }

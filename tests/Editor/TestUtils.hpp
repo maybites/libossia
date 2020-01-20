@@ -6,7 +6,8 @@
 #include <ossia/editor/scenario/clock.hpp>
 #include <ossia/dataflow/token_request.hpp>
 #include <ossia/dataflow/graph_node.hpp>
-#if defined(OSSIA_QT)
+#include <ossia/dataflow/node_process.hpp>
+#if defined(OSSIA_QML)
 #include <ossia-qt/js_utilities.hpp>
 #endif
 
@@ -108,6 +109,9 @@ std::ostream& operator<<(std::ostream& s, ossia::time_event::status st)
   return s;
 }
 
+inline auto dummy_process() { return std::make_shared<ossia::node_process>(std::make_shared<ossia::graph_node>()); }
+
+
 /*
 inline QDebug operator<<(QDebug d, ossia::time_event::status st)
 {
@@ -149,20 +153,46 @@ inline QDebug operator<<(QDebug d, const ossia::time_value&  s)
 }
 */
 
-inline
-std::ostream& operator<<(std::ostream& d, ossia::token_request t)
+namespace ossia
 {
-  d << (int64_t)t.date << " "
-    << t.position << " "
-    << (int64_t)t.offset << " "
+inline
+std::ostream& operator<<(std::ostream& d, const ossia::time_value& t)
+{
+  d << t.impl;
+  return d;
+}
+inline
+std::ostream& operator<<(std::ostream& d, const ossia::token_request& t)
+{
+  d
+    << t.prev_date << " -> "
+    << t.date << " "
+    << t.offset << " "
+    << t.parent_duration << " "
     << t.start_discontinuous << " "
-    << t.end_discontinuous << std::endl;
+    << t.end_discontinuous;
+  return d;
+}
+inline
+std::ostream& operator<<(std::ostream& d, const ossia::simple_token_request& t)
+{
+  d
+      << t.prev_date << " -> "
+      << t.date << " "
+      << t.offset << " "
+      << t.parent_duration << " "
+      << t.start_discontinuous << " "
+      << t.end_discontinuous;
   return d;
 }
 
 inline
-std::ostream& operator<<(std::ostream& d, decltype(ossia::graph_node::requested_tokens) t)
+std::ostream& operator<<(std::ostream& d, const decltype(ossia::graph_node::requested_tokens)& t)
 {
-  for(auto tk : t) d << tk << ", ";
+  d << "{\n";
+  for(auto tk : t)
+    d << "  " << tk << ", \n";
+  d << "}\n";
   return d;
+}
 }

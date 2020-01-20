@@ -26,8 +26,8 @@ public:
 
   gradient()
   {
-    ossia::outlet_ptr vp = ossia::make_outlet<ossia::value_port>();
-    vp->data.target<ossia::value_port>()->type = ossia::argb_u{};
+    ossia::outlet_ptr vp = new ossia::value_outlet;
+    vp->target<ossia::value_port>()->type = ossia::argb_u{};
     m_outlets.push_back(std::move(vp));
   }
 
@@ -36,20 +36,21 @@ public:
     m_data = std::move(t);
   }
 
-  void handle_before_first(ossia::token_request tk)
+  void handle_before_first(const ossia::token_request& tk, int64_t tick_start)
   {
-    auto position = tk.position;
-    auto& out = *m_outlets[0]->data.target<ossia::value_port>();
+    const auto position = tk.position();
+    auto& out = *m_outlets[0]->target<ossia::value_port>();
     auto beg = m_data.begin();
+
     if (beg->first >= position)
     {
       out.write_value(
-          clamp_color(ossia::argb{beg->second}).dataspace_value, tk.tick_start());
+          clamp_color(ossia::argb{beg->second}).dataspace_value, tick_start);
     }
     else if (!mustTween)
     {
       out.write_value(
-          clamp_color(ossia::argb{beg->second}).dataspace_value, tk.tick_start());
+          clamp_color(ossia::argb{beg->second}).dataspace_value, tick_start);
     }
     else
     {
@@ -71,37 +72,39 @@ public:
       out.write_value(
           ease_color(0., *tween, beg->first, beg->second, position)
               .dataspace_value,
-          tk.tick_start());
+          tick_start);
     }
   }
 
   void
-  run(ossia::token_request t, ossia::exec_state_facade e) noexcept override
+  run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
   {
-    auto& out = *m_outlets[0]->data.target<ossia::value_port>();
+    auto& out = *m_outlets[0]->target<ossia::value_port>();
+
+    const auto tick_start = e.physical_start(t);
 
     switch (m_data.size())
     {
       case 0:
-        out.write_value(ossia::vec4f{0., 0., 0., 0.}, t.tick_start());
+        out.write_value(ossia::vec4f{0., 0., 0., 0.}, tick_start);
         return;
       case 1:
-        handle_before_first(t);
+        handle_before_first(t, tick_start);
         return;
       default:
       {
-        auto it_next = m_data.lower_bound(t.position);
+        auto it_next = m_data.lower_bound(t.position());
         // Before start
         if (it_next == m_data.begin())
         {
-          handle_before_first(t);
+          handle_before_first(t, tick_start);
         }
         // past end
         else if (it_next == m_data.end())
         {
           out.write_value(
               clamp_color(ossia::argb{m_data.rbegin()->second}).dataspace_value,
-              t.tick_start());
+              tick_start);
         }
         else
         {
@@ -111,9 +114,9 @@ public:
           out.write_value(
               ease_color(
                   it_prev->first, it_prev->second, it_next->first,
-                  it_next->second, t.position)
+                  it_next->second, t.position())
                   .dataspace_value,
-              t.tick_start());
+              tick_start);
         }
       }
     }

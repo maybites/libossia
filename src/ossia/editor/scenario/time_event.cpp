@@ -6,6 +6,7 @@
 #include <ossia/editor/scenario/time_sync.hpp>
 #include <ossia/editor/scenario/time_interval.hpp>
 #include <ossia/editor/scenario/time_process.hpp>
+#include <ossia/detail/algorithms.hpp>
 
 namespace ossia
 {
@@ -53,13 +54,12 @@ void time_event::remove_time_process(time_process* timeProcess)
   }
 }
 
-void time_event::tick(
-    ossia::time_value date, double pos, ossia::time_value offset)
+void time_event::tick(ossia::time_value date, ossia::time_value offset)
 {
   for (auto& proc : m_processes)
   {
     proc->start();
-    proc->state(0_tv, date, pos, offset, 1.);
+    proc->state(ossia::token_request{0_tv, date, 0_tv, offset, 1., {}, {}});
     proc->stop();
   }
 }

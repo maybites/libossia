@@ -6,25 +6,28 @@ namespace ossia::nodes
 {
 class OSSIA_EXPORT merger final : public ossia::graph_node
 {
+  int m_count{};
 public:
+
   merger(int count)
+    : m_count{count}
   {
     for (int i = 0; i < count; i++)
     {
-      auto inl = ossia::make_inlet<ossia::audio_port>();
-      inl->data.target<ossia::audio_port>()->samples.resize(2);
-      for (auto& channel : inl->data.target<ossia::audio_port>()->samples)
+      auto inl = new ossia::audio_inlet;
+      inl->target<ossia::audio_port>()->samples.resize(2);
+      for (auto& channel : inl->target<ossia::audio_port>()->samples)
       {
         channel.reserve(512);
       }
       m_inlets.push_back(std::move(inl));
     }
 
-    m_outlets.push_back(ossia::make_outlet<ossia::audio_port>());
-    m_outlets.back()->data.target<ossia::audio_port>()->samples.resize(
+    m_outlets.push_back(new ossia::audio_outlet);
+    m_outlets.back()->target<ossia::audio_port>()->samples.resize(
         2 * count);
     for (auto& channel :
-         m_outlets.back()->data.target<ossia::audio_port>()->samples)
+         m_outlets.back()->target<ossia::audio_port>()->samples)
     {
       channel.reserve(512);
     }
@@ -35,13 +38,13 @@ public:
   }
 
   void
-  run(ossia::token_request t, ossia::exec_state_facade e) noexcept override
+  run(const ossia::token_request& t, ossia::exec_state_facade e) noexcept override
   {
-    auto& out = m_outlets.back()->data.target<ossia::audio_port>()->samples;
+    auto& out = m_outlets.back()->target<ossia::audio_port>()->samples;
     std::size_t cur = 0;
-    for (auto inl : m_inlets)
+    for (int i = 0; i < m_count; i++)
     {
-      auto& in = inl->data.target<ossia::audio_port>()->samples;
+      auto& in = m_inlets[i]->target<ossia::audio_port>()->samples;
 
       for (std::size_t i = 0; i < std::min((std::size_t)2, in.size()); i++)
       {

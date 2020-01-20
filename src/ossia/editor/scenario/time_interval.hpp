@@ -2,7 +2,10 @@
 #include <ossia/detail/optional.hpp>
 #include <ossia/detail/ptr_container.hpp>
 #include <ossia/editor/scenario/time_value.hpp>
-
+#include <ossia/editor/scenario/time_signature.hpp>
+#include <ossia/detail/flat_map.hpp>
+#include <ossia/detail/flicks.hpp>
+#include <ossia/editor/curve/curve.hpp>
 #include <ossia_export.h>
 #include <smallfun.hpp>
 
@@ -13,10 +16,14 @@
  */
 namespace ossia
 {
+struct token_request;
 class time_event;
 class time_process;
 class graph_node;
+using quarter_note = double;
 
+using time_signature_map = ossia::flat_map<ossia::time_value, time_signature>;
+using tempo_curve = ossia::curve<int64_t, double>;
 /**
  * @brief The time_interval class
  *
@@ -34,37 +41,40 @@ class OSSIA_EXPORT time_interval
 public:
   const std::shared_ptr<ossia::graph_node> node;
 
-  auto get_date() const
+  auto get_date() const noexcept
   {
     return m_date;
   }
-  auto get_position() const
-  {
-    return m_position;
-  }
-  auto get_offset() const
+  auto get_offset() const noexcept
   {
     return m_offset;
   }
-  auto get_speed() const
+  double get_internal_speed() const noexcept
   {
     return m_speed;
   }
-  void set_offset(ossia::time_value g)
+
+  double get_speed(time_value date) const noexcept;
+  void set_offset(ossia::time_value g) noexcept
   {
     m_offset = g;
   }
-  void set_speed(double g)
+
+  void set_speed(double g) noexcept
   {
     m_speed = g;
-    m_globalSpeed = g * m_speed;
   }
 
-  void tick_current(ossia::time_value offset);
+  void set_parent_speed(double sp) noexcept
+  {
+    m_parentSpeed = sp;
+  }
 
-  void tick(ossia::time_value, double ratio = 1.0);
-  void tick_offset(ossia::time_value, ossia::time_value offset);
-  void tick_offset_speed_precomputed(ossia::time_value, ossia::time_value offset);
+  void tick_current(ossia::time_value offset, const ossia::token_request& parent_request);
+
+  void tick(ossia::time_value, const ossia::token_request& parent_request, double ratio = 1.0);
+  void tick_offset(ossia::time_value, ossia::time_value offset, const ossia::token_request& parent_request);
+  void tick_offset_speed_precomputed(ossia::time_value, ossia::time_value offset, const ossia::token_request& parent_request);
   // void tick_offset(ossia::time_value, double ratio, ossia::time_value
   // offset);
 
@@ -73,7 +83,7 @@ public:
    \param const #TimeValue date
    \param std::shared_ptr<#State> */
   using exec_callback
-      = optional<smallfun::function<void(double, ossia::time_value), 32>>;
+      = optional<smallfun::function<void(ossia::time_value), 32>>;
 
   /*! constructor
    \details by default a #time_interval has an infinite duration with no
@@ -122,24 +132,17 @@ public:
 
   void transport(ossia::time_value);
 
-  /*! get a #State from the interval depending on its date
-   \details the returned #State is made of as many as sub States for each
-   TimeProcess the #time_interval manages
-   \details don't call state when the #time_interval is not running
-   \return std::shared_ptr<#State> */
-  void state(ossia::time_value from, ossia::time_value to);
-
   /*! sets a new callback for the interval
     \param #time_interval::ExecutionCallback to use to be notified at each
     step
     */
   void set_callback(exec_callback);
-  void set_callback(smallfun::function<void(double, ossia::time_value), 32>);
+  void set_callback(smallfun::function<void(ossia::time_value), 32>);
 
   //! This callback won't compute the state.
   void set_stateless_callback(exec_callback);
   void set_stateless_callback(
-      smallfun::function<void(double, ossia::time_value), 32>);
+      smallfun::function<void(ossia::time_value), 32>);
 
   /*! get the #time_interval nominal duration
    \return const #TimeValue& nominal duration */
@@ -195,24 +198,31 @@ public:
     return m_processes;
   }
 
-  void set_parent_speed(double sp)
-  {
-    m_parentSpeed = sp;
-    m_globalSpeed = m_parentSpeed * m_speed;
-  }
-
   void cleanup();
   void mute(bool);
 
+  void set_tempo_curve(optional<tempo_curve> curve);
+  void set_time_signature_map(optional<time_signature_map> map);
+  void set_quarter_duration(double tu);
 private:
   time_interval(const time_interval&) = delete;
   time_interval(time_interval&&) = delete;
   time_interval& operator=(const time_interval&) = delete;
   time_interval& operator=(time_interval&&) = delete;
-  void compute_position();
+
+  /*! get a #State from the interval depending on its date
+   \details the returned #State is made of as many as sub States for each
+   TimeProcess the #time_interval manages
+   \details don't call state when the #time_interval is not running
+   \return std::shared_ptr<#State> */
+  void state(ossia::time_value from, ossia::time_value to);
+
+  time_signature signature(time_value date, const ossia::token_request& parent_request) const noexcept;
+  double tempo(time_value date, const ossia::token_request& parent_request) const noexcept;
+
   void tick_impl(
       ossia::time_value old_date, ossia::time_value new_date,
-      ossia::time_value offset);
+      ossia::time_value offset, const ossia::token_request& parent_request);
 
   std::vector<std::shared_ptr<time_process>> m_processes;
   time_interval::exec_callback m_callback;
@@ -224,17 +234,29 @@ private:
   time_value m_min{};
   time_value m_max{};
 
-  /// the progression of the interval between the beginning
-  /// and the nominal duration [0. :: 1.]
-  double m_position{};
-
   time_value m_date{};
   time_value m_offset{}; /// the date the clock will run from
 
   time_value m_tick_offset{}; /// offset in the current tick
+
+  double m_current_tempo{};
+
+  time_signature_map m_timeSignature{};
+  tempo_curve m_tempoCurve{};
+
+  ossia::quarter_note m_musical_start_last_bar{};
+  ossia::quarter_note m_musical_start_position{};
+
+  ossia::quarter_note m_musical_end_last_bar{};
+  ossia::quarter_note m_musical_end_position{};
+
   double m_speed{1.};         /// tick length is multiplied by this
   double m_globalSpeed{1.};
   double m_parentSpeed{1.};
+  time_signature m_current_signature{};
+  double m_quarter_duration{ossia::quarter_duration<double>};
   bool m_running{false};
+  bool m_hasTempo{false};
+  bool m_hasSignature{false};
 };
 }

@@ -24,16 +24,17 @@ option(OSSIA_HIDE_ALL_SYMBOLS "Hide all symbols from the ossia lib" OFF)
 # Bindings :
 option(OSSIA_JAVA "Build JNI bindings" OFF)
 option(OSSIA_PD "Build PureData externals" OFF)
-option(OSSIA_PD_ONLY "Build and install only PureData externals" OFF)
+option(OSSIA_PD_ONLY "Build and install only PureData externals (disable all other non mandatory options)" OFF)
 option(OSSIA_MAX "Build Max/MSP externals" OFF)
-option(OSSIA_MAX_ONLY "Build and install only Max/MSP externals" OFF)
+option(OSSIA_MAX_ONLY "Build and install only Max/MSP externals (disable all other non mandatory options)" OFF)
 option(OSSIA_PYTHON "Build Python bindings" OFF)
-option(OSSIA_PYTHON_ONLY "Build and install only Python bindings" OFF)
+option(OSSIA_PYTHON_ONLY "Build and install only Python bindings (disable all other non mandatory options)" OFF)
 option(OSSIA_QT "Build Qt bindings. Implies websocket, serial, http." OFF)
 option(OSSIA_C "Build C bindings" OFF)
 option(OSSIA_CPP "Build CPP bindings" OFF)
 option(OSSIA_CPP_ONLY "Build only ossia-cpp and install only needed header" OFF)
 option(OSSIA_UNITY3D "Build Unity3D bindings" OFF)
+option(OSSIA_UNITY3D_ONLY "Build only Unity3D bindings (disable all other non mandatory options)" OFF)
 option(OSSIA_QML "Build QML bindings" OFF)
 option(OSSIA_QML_ONLY "Build and install only QML bindings" OFF)
 option(OSSIA_QML_SCORE "Build QML bindings to scoring parts" OFF)
@@ -53,6 +54,8 @@ option(OSSIA_PROTOCOL_LEAPMOTION "Enable Leapmotion protocol" OFF) # Requires Le
 option(OSSIA_PROTOCOL_JOYSTICK "Enable Joystick protocol" ON)  # Requires SDL2 library
 option(OSSIA_PROTOCOL_WIIMOTE "Enable Wiimote Protocol" ON) #use wiiuse
 option(OSSIA_PROTOCOL_ARTNET "Enable artnet protocol" ON) #use libartnet
+option(OSSIA_PROTOCOL_LIBMAPPER "Enable libmapper protocol" OFF) #use external libmapper
+
 option(OSSIA_DISABLE_QT_PLUGIN "Disable building of a Qt plugin" OFF)
 option(OSSIA_DNSSD "Enable DNSSD support" ON)
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${PROJECT_SOURCE_DIR}/CMake;${PROJECT_SOURCE_DIR}/cmake/cmake-modules;")
@@ -251,6 +254,7 @@ if(OSSIA_UNITY3D_ONLY)
   set(OSSIA_QML 0)
   set(OSSIA_QML_SCORE 0)
   set(OSSIA_QML_DEVICE 0)
+  set(OSSIA_PROTOCOL_ARTNET 0)
   set(OSSIA_PROTOCOL_AUDIO 0)
   set(OSSIA_PROTOCOL_MIDI 0)
   set(OSSIA_PROTOCOL_OSC 1)

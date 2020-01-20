@@ -6,17 +6,18 @@
 namespace ossia
 {
 
-class OSSIA_EXPORT node_process : public ossia::time_process
+class OSSIA_EXPORT node_process : public looping_process<node_process>
 {
 public:
   node_process(ossia::node_ptr n);
   ~node_process() override;
-  void offset(ossia::time_value, double pos) override;
-  void transport(ossia::time_value date, double pos) override;
+  void offset_impl(ossia::time_value) override;
+  void transport_impl(ossia::time_value date) override;
 
-  void state(
-      ossia::time_value from, ossia::time_value to, double relative_position,
-      ossia::time_value tick_offset, double gspeed) override;
+  void state_impl(const ossia::token_request& req)
+  {
+    node->request(req);
+  }
 
   void start() override;
   void stop() override;
@@ -24,4 +25,5 @@ public:
   void resume() override;
   void mute_impl(bool) override;
 };
+
 }

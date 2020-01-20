@@ -64,8 +64,9 @@ private:
   ossia::ptr_map<const time_interval*, graph_t::edge_descriptor> edges;
 };
 
-class OSSIA_EXPORT scenario final : public time_process
+class OSSIA_EXPORT scenario final : public looping_process<scenario>
 {
+  friend class looping_process<scenario>;
 public:
   scenario();
   ~scenario() override;
@@ -103,18 +104,16 @@ public:
 
 private:
   friend struct scenario_graph;
-  void offset(ossia::time_value, double pos) override;
+  void offset_impl(ossia::time_value) override;
 
-  void state(
-      ossia::time_value from, ossia::time_value to, double pos,
-      ossia::time_value tick_offset, double gspeed) override;
+  void state_impl(const ossia::token_request& req);
 
   void start() override;
   void stop() override;
   void pause() override;
   void resume() override;
 
-  void transport(ossia::time_value offset, double pos) override;
+  void transport_impl(ossia::time_value offset) override;
   void mute_impl(bool) override;
   bool is_root_sync(ossia::time_sync& sync) const;
 
@@ -134,22 +133,47 @@ private:
   small_event_vec m_maxReachedEvents;
   overtick_map m_overticks; // used as cache
   ossia::flat_map<time_interval*, time_value> m_itv_end_map;
+  sync_set m_retry_syncs; // used as cache
   sync_set m_endNodes; // used as cache
   scenario_graph m_sg; // used as cache
 
   ossia::time_value m_lastDate{ossia::Infinite};
 
-  bool process_this(
-      time_sync& node, small_event_vec& pendingEvents,
-      small_event_vec& maxReachedEvents, interval_set& started,
-      interval_set& stopped, ossia::time_value tick_offset);
   static void make_happen(
       time_event& event, interval_set& started, interval_set& stopped,
-      ossia::time_value tick_offset);
+      ossia::time_value tick_offset, const ossia::token_request& tok);
+
   static void make_dispose(time_event& event, interval_set& stopped);
-  bool trigger_sync(
-      time_sync& node, small_event_vec& pending, small_event_vec& maxReachedEv,
+
+  sync_status process_this(time_sync& node, small_event_vec& pendingEvents,
+      small_event_vec& maxReachedEvents, interval_set& started,
+      interval_set& stopped, ossia::time_value tick_offset, const token_request& tok);
+
+  sync_status trigger_sync(time_sync& node, small_event_vec& pending, small_event_vec& maxReachedEv,
       interval_set& started, interval_set& stopped,
-      ossia::time_value tick_offset, bool maxReached);
+      ossia::time_value tick_offset, const token_request& req, bool maxReached);
+
+  sync_status process_this_musical(
+      time_sync& node, small_event_vec& pendingEvents,
+      small_event_vec& maxReachedEvents, ossia::time_value tick_offset,
+      const token_request& tok) noexcept;
+
+  sync_status trigger_sync_musical(
+      time_sync& node, small_event_vec& maxReachedEvents,
+      ossia::time_value tick_offset, const token_request& req,
+      bool maxReached) noexcept;
+
+  sync_status quantify_time_sync(
+      time_sync& sync, const ossia::token_request& tk) noexcept;
+
+  sync_status trigger_quantified_time_sync(
+      time_sync& sync, bool& maximalDurationReached) noexcept;
+
+  void run_interval(
+      ossia::time_interval& interval,
+      const ossia::token_request& tk,
+      const time_value& tick_ms,
+      ossia::time_value tick,
+      ossia::time_value offset);
 };
 }

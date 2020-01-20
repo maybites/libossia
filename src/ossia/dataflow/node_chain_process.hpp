@@ -5,24 +5,18 @@
 namespace ossia
 {
 
-struct node_chain_process final : public ossia::time_process
+struct node_chain_process final : public looping_process<node_chain_process>
 {
   node_chain_process()
   {
-    m_lastDate = ossia::Zero;
   }
 
-  void state(
-      ossia::time_value from, ossia::time_value to, double relative_position,
-      ossia::time_value tick_offset, double speed) override
+  void state_impl(const ossia::token_request& req)
   {
-    const ossia::token_request tk{from, to, relative_position, tick_offset,
-                                  speed};
     for (auto& node : nodes)
     {
-      node->request(tk);
+      node->request(req);
     }
-    m_lastDate = to;
   }
 
   void add_node(int64_t idx, std::shared_ptr<ossia::graph_node> n)
@@ -39,7 +33,7 @@ struct node_chain_process final : public ossia::time_process
     }
   }
 
-  void offset(time_value date, double pos) override
+  void offset_impl(time_value date) override
   {
     for (auto& node : nodes)
     {
@@ -47,7 +41,7 @@ struct node_chain_process final : public ossia::time_process
     }
   }
 
-  void transport(ossia::time_value date, double pos) override
+  void transport_impl(ossia::time_value date) override
   {
     for (auto& node : nodes)
     {
@@ -61,6 +55,5 @@ struct node_chain_process final : public ossia::time_process
       node->set_mute(b);
   }
   std::vector<std::shared_ptr<ossia::graph_node>> nodes;
-  ossia::time_value m_lastDate{ossia::Infinite};
 };
 }

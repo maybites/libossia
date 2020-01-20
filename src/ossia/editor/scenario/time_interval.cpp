@@ -9,44 +9,155 @@
 
 #include <algorithm>
 #include <iostream>
+#include <boost/config.hpp>
 namespace ossia
 {
+double time_interval::get_speed(time_value date) const noexcept
+{
+  if(BOOST_LIKELY(!m_hasTempo))
+  {
+    return m_speed;
+  }
+  else
+  {
+    auto t = m_tempoCurve.value_at(date.impl);
+    return m_speed * t / ossia::root_tempo;
+  }
+}
 
 void time_interval::tick_impl(
     ossia::time_value old_date, ossia::time_value new_date,
-    ossia::time_value offset)
+    ossia::time_value offset, const ossia::token_request& parent_request)
 {
   m_tick_offset = offset;
   m_date = new_date;
-  compute_position();
 
-  node->request(
-      {old_date, new_date, m_position, m_tick_offset, m_globalSpeed});
+  if(old_date < 0_tv || new_date < 0_tv)
+    return;
+
+  m_current_signature = signature(old_date, parent_request);
+  m_current_tempo = m_speed * tempo(old_date, parent_request);
+
+  if(m_hasTempo)
+  {
+    m_globalSpeed = get_speed(old_date);
+  }
+  else
+  {
+    m_globalSpeed = m_parentSpeed * m_speed;
+  }
+  if(m_hasSignature)
+  {
+    // Compute the amount of bars for each signature change.
+    // We need the exact amount of time that happens between two signature changes.
+
+    // At interval t = 1s, date = sampling frequency. (result of time() function in score)
+    // This is the same referential that the time of the bar changes.
+    // -> date is already tempo-processed, we only need to care about the measure.
+    // -> FS samples is always 0.5 measure (4/4) at ossia::root_tempo
+
+
+    {
+      const double num_quarters = old_date.impl / m_quarter_duration;
+
+      auto [time, sig] = *ossia::last_before(m_timeSignature, old_date);
+
+      auto quarters_since_last_measure_change = (old_date - time).impl / m_quarter_duration;
+      auto quarters_in_bar = (4. * (double(sig.upper) / sig.lower));
+      auto bars_since_last_measure_change = std::floor(quarters_since_last_measure_change / quarters_in_bar) * quarters_in_bar;
+
+      m_musical_start_last_bar = (time.impl / m_quarter_duration + bars_since_last_measure_change);
+      m_musical_start_position = num_quarters;
+    }
+
+    {
+      const double num_quarters = new_date.impl / m_quarter_duration;
+
+      auto [time, sig] = *ossia::last_before(m_timeSignature, new_date);
+
+      auto quarters_since_last_measure_change = (new_date - time).impl / m_quarter_duration;
+      auto quarters_in_bar = (4. * (double(sig.upper) / sig.lower));
+      auto bars_since_last_measure_change = std::floor(quarters_since_last_measure_change / quarters_in_bar) * quarters_in_bar;
+
+      m_musical_end_last_bar = (time.impl / m_quarter_duration + bars_since_last_measure_change);
+      m_musical_end_position = num_quarters;
+    }
+  }
+  else
+  {
+    m_musical_start_last_bar = parent_request.musical_start_last_bar;
+    m_musical_start_position = parent_request.musical_start_position;
+    m_musical_end_last_bar = parent_request.musical_end_last_bar;
+    m_musical_end_position = parent_request.musical_end_position;
+  }
+
 
   state(old_date, new_date);
   if (m_callback)
-    (*m_callback)(m_position, new_date);
+    (*m_callback)(new_date);
 }
 
-void time_interval::tick_current(ossia::time_value offset)
+void time_interval::tick_current(ossia::time_value offset, const ossia::token_request& parent_request)
 {
-  tick_impl(m_date, m_date, offset);
+  tick_impl(m_date, m_date, offset, parent_request);
 }
 
-void time_interval::tick(time_value date, double ratio)
+void time_interval::tick(time_value date, const ossia::token_request& parent_request, double ratio)
 {
   tick_impl(
-      m_date, m_date + std::ceil(date.impl * m_speed / ratio), m_tick_offset);
+      m_date, m_date + std::ceil(date.impl * get_speed(m_date) / ratio), m_tick_offset, parent_request);
 }
 
-void time_interval::tick_offset(time_value date, ossia::time_value offset)
+void time_interval::tick_offset(time_value date, ossia::time_value offset, const ossia::token_request& parent_request)
 {
-  tick_impl(m_date, m_date + std::ceil(date.impl * m_speed), offset);
+  if(BOOST_UNLIKELY(m_hasTempo && parent_request.speed != 0))
+  {
+    // TODO : use this formula to compute the exact date at which we must end for this tick
+    // t = beat / (t0/2 + ta/2)
+    // we must find the equivalent constant tempo that would make us end at the exact same
+    // date than a proper linear interpolation
+    auto beat = date - m_date;
+    auto t0 = m_tempoCurve.value_at(m_date.impl);
+    auto ta = m_tempoCurve.value_at(date.impl);
+
+    // absolute tempo given : we negate the speed of the parent
+    // todo : this should be done outside for the scenario
+    double speed = (m_speed * t0 / ossia::root_tempo) / parent_request.speed;
+
+    tick_impl(m_date, m_date + std::ceil(date.impl * speed), offset, parent_request);
+  }
+  else
+  {
+    tick_impl(m_date, m_date + std::ceil(date.impl * m_speed), offset, parent_request);
+  }
 }
 
-void time_interval::tick_offset_speed_precomputed(time_value date, ossia::time_value offset)
+void time_interval::tick_offset_speed_precomputed(time_value date, ossia::time_value offset, const ossia::token_request& parent_request)
 {
-  tick_impl(m_date, m_date + date.impl, offset);
+  tick_impl(m_date, m_date + date.impl, offset, parent_request);
+}
+
+time_signature time_interval::signature(time_value date, const ossia::token_request& parent_request) const noexcept
+{
+  if(m_hasSignature && !m_timeSignature.empty())
+  {
+    auto it = ossia::last_before(m_timeSignature, date);
+    if(it != m_timeSignature.end())
+    {
+      return it->second;
+    }
+  }
+  return parent_request.signature;
+}
+
+double time_interval::tempo(time_value date, const ossia::token_request& parent_request) const noexcept
+{
+  // TODO tempo should be hierarchic
+  if(m_hasTempo)
+  {
+    return m_tempoCurve.value_at(date.impl);
+  }
+  return parent_request.tempo;
 }
 
 std::shared_ptr<time_interval> time_interval::create(
@@ -84,7 +195,7 @@ time_interval::~time_interval()
 void time_interval::start_and_tick()
 {
   start();
-  tick_current(0_tv);
+  tick_current(0_tv, {});
 }
 
 void time_interval::start()
@@ -103,9 +214,9 @@ void time_interval::start()
   // set clock at a tick
   m_running = true;
   m_date = m_offset;
-  compute_position();
+
   if (m_callback)
-    (*m_callback)(m_position, m_date);
+    (*m_callback)(m_date);
 }
 
 void time_interval::stop()
@@ -118,16 +229,7 @@ void time_interval::stop()
   }
 
   m_date = Zero;
-  m_position = 0.;
   m_running = false;
-}
-
-void time_interval::compute_position()
-{
-  if (m_nominal != Zero)
-    m_position = double(m_date) / m_nominal;
-  else
-    m_position = 0.0;
 }
 
 void time_interval::offset(ossia::time_value date)
@@ -135,8 +237,6 @@ void time_interval::offset(ossia::time_value date)
   m_offset = date;
   m_date = date;
 
-  compute_position();
-
   const auto& processes = get_time_processes();
   const auto N = processes.size();
   if (N > 0)
@@ -146,12 +246,12 @@ void time_interval::offset(ossia::time_value date)
     {
       if (timeProcess->enabled())
       {
-        timeProcess->offset(m_date, m_position);
+        timeProcess->offset(m_date);
       }
     }
   }
   if (m_callback)
-    (*m_callback)(m_position, m_date);
+    (*m_callback)(m_date);
 }
 
 void time_interval::transport(time_value date)
@@ -159,8 +259,6 @@ void time_interval::transport(time_value date)
   m_offset = date;
   m_date = date;
 
-  compute_position();
-
   const auto& processes = get_time_processes();
   const auto N = processes.size();
   if (N > 0)
@@ -170,12 +268,12 @@ void time_interval::transport(time_value date)
     {
       if (timeProcess->enabled())
       {
-        timeProcess->transport(m_date, m_position);
+        timeProcess->transport(m_date);
       }
     }
   }
   if (m_callback)
-    (*m_callback)(m_position, m_date);
+    (*m_callback)(m_date);
 }
 
 void time_interval::state(ossia::time_value from, ossia::time_value to)
@@ -185,13 +283,19 @@ void time_interval::state(ossia::time_value from, ossia::time_value to)
 
   if (N > 0)
   {
+    ossia::token_request tok{from, to, m_nominal, m_tick_offset, m_globalSpeed, m_current_signature, m_current_tempo};
+    tok.musical_start_last_bar = this->m_musical_start_last_bar;
+    tok.musical_start_position = this->m_musical_start_position;
+    tok.musical_end_last_bar = this->m_musical_end_last_bar;
+    tok.musical_end_position = this->m_musical_end_position;
+    node->request(tok);
     // get the state of each TimeProcess at current clock position and date
     for (const std::shared_ptr<ossia::time_process>& timeProcess : processes)
     {
       time_process& p = *timeProcess;
       if (p.enabled())
       {
-        p.state(from, to, m_position, m_tick_offset, m_globalSpeed);
+        p.state(tok);
       }
     }
   }
@@ -224,7 +328,7 @@ void time_interval::set_callback(time_interval::exec_callback cb)
 }
 
 void time_interval::set_callback(
-    smallfun::function<void(double, time_value), 32> cb)
+    smallfun::function<void(time_value), 32> cb)
 {
   m_callback = std::move(cb);
 }
@@ -238,7 +342,7 @@ void time_interval::set_stateless_callback(time_interval::exec_callback cb)
 }
 
 void time_interval::set_stateless_callback(
-    smallfun::function<void(double, time_value), 32> cb)
+    smallfun::function<void(time_value), 32> cb)
 {
   m_callback = std::move(cb);
 }
@@ -259,8 +363,8 @@ time_interval::set_nominal_duration(ossia::time_value durationNominal)
   if (m_nominal > m_max)
     set_max_duration(m_nominal);
 
-  if (m_date > m_nominal)
-    m_date = m_nominal;
+  if (!m_max.infinite() && m_date > m_max)
+    m_date = m_max;
 
   return *this;
 }
@@ -347,5 +451,26 @@ void time_interval::mute(bool m)
   {
     p->mute(m);
   }
+}
+
+void time_interval::set_tempo_curve(optional<tempo_curve> curve)
+{
+  m_hasTempo = bool(curve);
+  if(m_hasTempo)
+    m_tempoCurve = *std::move(curve);
+  else
+    m_tempoCurve.reset();
+}
+
+void time_interval::set_time_signature_map(optional<time_signature_map> map)
+{
+  m_hasSignature = bool(map);
+  if(map)
+    m_timeSignature = *std::move(map);
+}
+
+void time_interval::set_quarter_duration(double tu)
+{
+  m_quarter_duration = tu;
 }
 }

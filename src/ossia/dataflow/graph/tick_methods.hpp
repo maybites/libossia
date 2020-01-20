@@ -86,15 +86,18 @@ struct tick_all_nodes
 
   void operator()(unsigned long samples, double) const
   {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     e.begin_tick();
     const time_value old_date{e.samples_since_start};
     e.samples_since_start += samples;
     const time_value new_date{e.samples_since_start};
 
+    // TODO tempo / sig ?
     for (auto& node : g.get_nodes())
-      node->request(token_request{old_date, new_date});
+      node->request(token_request{old_date, new_date, 0_tv, 0_tv, 1.0, {}, ossia::root_tempo});
 
     g.state(e);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     e.commit();
   }
 };
@@ -109,13 +112,18 @@ struct buffer_tick
 
   void operator()(unsigned long frameCount, double seconds)
   {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     st.begin_tick();
     st.samples_since_start += frameCount;
     st.bufferSize = (int)frameCount;
     // we could run a syscall and call now() but that's a bit more costly.
     st.cur_date = seconds * 1e9;
-    itv.tick_offset(ossia::time_value{int64_t(frameCount)}, 0_tv);
+
+    const auto flicks = frameCount * st.samplesToModelRatio;
+    const ossia::token_request tok{};
+    itv.tick_offset(ossia::time_value{int64_t(flicks)}, 0_tv, tok);
     g.state(st);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     (st.*Commit)();
   }
 };
@@ -130,21 +138,26 @@ struct precise_score_tick
 
   void operator()(unsigned long frameCount, double seconds)
   {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     st.bufferSize = 1;
     st.cur_date = seconds * 1e9;
     for (std::size_t i = 0; i < frameCount; i++)
     {
       st.begin_tick();
       st.samples_since_start++;
-      itv.tick_offset(ossia::time_value{1}, 0_tv);
+      const ossia::token_request tok{};
+      itv.tick_offset(ossia::time_value{1}, 0_tv, tok);
       g.state(st);
+      std::atomic_thread_fence(std::memory_order_seq_cst);
       (st.*Commit)();
 
       st.advance_tick(1);
+      std::atomic_thread_fence(std::memory_order_seq_cst);
     }
   }
 };
 
+/*
 template <void (ossia::execution_state::*Commit)()>
 struct split_score_tick
 {
@@ -164,21 +177,11 @@ public:
       ossia::flat_set<int64_t>& cuts, token_request_vec& tokens,
       time_value cur_date)
   {
-    double parent_length = 0;
-    for (auto& token : tokens)
-    {
-      if (token.date != 0 && token.position != 0)
-      {
-        parent_length = token.date / token.position;
-        break;
-      }
-    }
-
     for (auto it = tokens.begin(); it != tokens.end(); ++it)
     {
       if (it->date > cur_date)
       {
-        auto token_end_offset = it->offset + std::abs(it->date - cur_date);
+        auto token_end_offset = it->offset + abs(it->date - cur_date);
         auto start_it = cuts.upper_bound(it->offset);
         while (start_it != cuts.end() && (*start_it) < token_end_offset)
         {
@@ -188,7 +191,6 @@ public:
 
           // make first token shorter
           it->date = cur_date + N;
-          it->position = it->date / parent_length;
 
           // make next token
           inserted_token.offset = cut;
@@ -210,8 +212,8 @@ public:
     {
       for (const auto& tk : node->requested_tokens)
       {
-        cuts.insert(tk.offset);
-        cuts.insert(tk.offset + std::abs(tk.date - tk.prev_date));
+        cuts.insert(tk.offset.impl);
+        cuts.insert((tk.offset + abs(tk.date - tk.prev_date)).impl);
       }
     }
 
@@ -255,7 +257,8 @@ public:
     st.bufferSize = (int)frameCount;
     // we could run a syscall and call now() but that's a bit more costly.
     st.cur_date = seconds * 1e9;
-    itv.tick_offset(ossia::time_value{int64_t(frameCount)}, 0_tv);
+    const ossia::token_request tok{};
+    itv.tick_offset(ossia::time_value{int64_t(frameCount)}, 0_tv, tok);
 
     cut(g);
   }
@@ -267,6 +270,7 @@ private:
       std::pair<ossia::token_request_vec, ossia::token_request_vec::iterator>>
       requests;
 };
+*/
 #if defined(SCORE_BENCHMARK)
 template <typename BaseTick>
 struct benchmark_score_tick

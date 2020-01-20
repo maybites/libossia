@@ -3,7 +3,7 @@
 #include <ossia/editor/expression/expression.hpp>
 #include <ossia/editor/scenario/time_event.hpp>
 #include <ossia/editor/scenario/time_value.hpp>
-
+#include <ossia/detail/flicks.hpp>
 #include <ossia_export.h>
 
 #include <atomic>
@@ -143,17 +143,18 @@ public:
     return m_status;
   }
 
-  void set_sync_rate(time_value v) noexcept
+  void set_sync_rate(double syncRatio, double quarterDuration) noexcept
   {
-    m_sync_rate = v;
+    m_sync_rate = syncRatio;
+    m_quarter_duration = quarterDuration;
   }
-  time_value get_sync_rate() const noexcept
+  double get_sync_rate() const noexcept
   {
     return m_sync_rate;
   }
   bool has_sync_rate() const noexcept
   {
-    return !m_sync_rate.infinite();
+    return m_sync_rate > 0;
   }
 
   void set_trigger_date(time_value v) noexcept
@@ -175,12 +176,15 @@ private:
 
   optional<expressions::expression_callback_iterator> m_callback;
 
-  time_value m_sync_rate = Infinite;
+  double m_sync_rate = 0.;
+  double m_quarter_duration = ossia::quarter_duration<double>;
   time_value m_trigger_date = Infinite;
   status m_status : 2;
   bool m_observe : 1;
   bool m_evaluating : 1;
   bool m_muted : 1;
   bool m_autotrigger : 1;
+  bool m_is_being_triggered : 1;
 };
+
 }

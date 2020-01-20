@@ -46,6 +46,7 @@ void scenario::start()
   m_overticks.container.reserve(m_nodes.size());
   m_itv_end_map.container.reserve(m_intervals.size());
   m_endNodes.container.reserve(m_nodes.size());
+  m_retry_syncs.container.reserve(8);
   for (auto& node : m_nodes)
   {
     if (is_root_sync(*node))
@@ -94,7 +95,8 @@ void scenario::start()
     {
       m_runningIntervals.insert(&cst);
       cst.start();
-      cst.tick_current(0_tv);
+      const auto tok = ossia::token_request{};
+      cst.tick_current(0_tv, tok);
     }
     // the interval is in the future
     else if (
@@ -211,6 +213,7 @@ void scenario::remove_time_sync(const std::shared_ptr<time_sync>& timeSync)
       m_rootNodes.erase(it);
     m_overticks.erase(timeSync.get());
     m_endNodes.erase(timeSync.get());
+    m_retry_syncs.erase(timeSync.get());
 
     remove_one(m_nodes, timeSync);
   }

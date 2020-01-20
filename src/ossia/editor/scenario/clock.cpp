@@ -1,5 +1,6 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+#include <ossia/dataflow/token_request.hpp>
 #include <ossia/detail/logger.hpp>
 #include <ossia/detail/math.hpp>
 #include <ossia/detail/thread.hpp>
@@ -17,8 +18,8 @@ clock::clock(ossia::time_interval& cst, double ratio)
     : m_interval{cst}
     , m_ratio(ratio)
     , m_duration{cst.get_max_duration().infinite()
-                     ? time_value::infinity
-                     : cst.get_max_duration() * ratio}
+                     ? ossia::Infinite
+                     : time_value{cst.get_max_duration() * ratio}}
     , m_granularity{1}
     , m_running{false}
     , m_paused{false}
@@ -47,7 +48,7 @@ void clock::start_and_tick()
 
   // notify the owner
   m_interval.start();
-  m_interval.tick_current(0_tv);
+  m_interval.tick_current(0_tv, ossia::token_request{});
 
   if (m_thread.joinable())
     m_thread.join();
@@ -105,19 +106,20 @@ bool clock::tick()
 
   // how much ticks it represents ?
   droppedTicks
-      = ossia::llround(std::floor(double(deltaInUs) / double(m_granularity)));
+      = ossia::llround(std::floor(double(deltaInUs) / double(m_granularity.impl)));
 
+  const auto tok = ossia::token_request{};
   // adjust date and elapsed time considering the dropped ticks
   if (droppedTicks)
   {
-    m_date += droppedTicks * m_granularity;
-    m_elapsedTime += droppedTicks * m_granularity;
+    m_date += droppedTicks * m_granularity.impl;
+    m_elapsedTime += droppedTicks * m_granularity.impl;
 
     // maybe the clock reaches the end ?
     if (m_duration - m_date < Zero && !m_duration.infinite())
     {
       // notify the owner
-      m_interval.tick_offset(time_value{deltaInUs}, 0_tv);
+      m_interval.tick_offset(time_value{deltaInUs}, 0_tv, tok);
 
       request_stop();
 
@@ -126,7 +128,7 @@ bool clock::tick()
   }
 
   // how many time to pause to reach the next tick ?
-  int64_t pauseInUs = m_granularity - m_elapsedTime % m_granularity;
+  int64_t pauseInUs = m_granularity.impl - m_elapsedTime % m_granularity.impl;
   // std::cerr << m_granularity << " " << m_ratio << " " << deltaInUs << " "<<
   // droppedTicks << " "  << granularityInUs << " " << pauseInUs << std::endl;
   // if too early: wait
@@ -151,7 +153,7 @@ bool clock::tick()
 
     deltaInUs
         = duration_cast<microseconds>(clock_type::now() - m_lastTime).count()
-          - droppedTicks * m_granularity;
+          - droppedTicks * m_granularity.impl;
   }
 
   // std::cerr << deltaInUs << std::endl;
@@ -168,7 +170,7 @@ bool clock::tick()
   if (!paused && running)
   {
     // notify the owner
-    m_interval.tick(time_value{deltaInUs}, m_ratio);
+    m_interval.tick(time_value{deltaInUs}, tok, m_ratio);
 
     // is this the end
     if (m_duration - m_date < Zero && !m_duration.infinite())

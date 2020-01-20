@@ -127,6 +127,9 @@ struct OSSIA_EXPORT graph_util
           {
             e.copy_from_global(*addr, in);
           }
+        },
+        [&](ossia::net::node_base* node, bool) {
+          e.copy_from_global_node(*node, in);
         });
   }
 
@@ -135,8 +138,7 @@ struct OSSIA_EXPORT graph_util
     // Clear the outputs of the node
     for (const outlet_ptr& out : n.outputs())
     {
-      if (out->data)
-        eggs::variants::apply(clear_data{}, out->data);
+      out->visit(clear_data{});
     }
 
     // Copy from environment and previous ports to inputs
@@ -162,15 +164,11 @@ struct OSSIA_EXPORT graph_util
 
   static void teardown_node(const graph_node& n, execution_state& e)
   {
-    for (const inlet_ptr& in : n.inputs())
-    {
-      if (in->data)
-        eggs::variants::apply(clear_data{}, in->data);
-    }
-
     // Copy from output ports to environment
     for (const outlet_ptr& out : n.outputs())
     {
+      if(out->which() == ossia::audio_port::which)
+        static_cast<audio_outlet*>(out)->post_process();
       bool must_copy = out->targets.empty();
 
       // If some following glutton nodes aren't enabled, then we copy to the
@@ -186,7 +184,13 @@ struct OSSIA_EXPORT graph_util
       if (must_copy)
         out->write(e);
     }
+
+    for (const inlet_ptr& in : n.inputs())
+    {
+      in->visit(clear_data{});
+    }
   }
+
   /*
     static void disable_strict_nodes_bfs(const graph_t& graph)
     {
@@ -310,22 +314,7 @@ struct OSSIA_EXPORT graph_util
     {
       first_node.run(request, {e});
     }
-    /*
-        auto all_normal = ossia::all_of(first_node.requested_tokens,
-                                       [] (const ossia::token_request& tk) {
-       return tk.speed == 1.;}); if(all_normal)
-        {
-          for(const auto& request : first_node.requested_tokens)
-          {
-            first_node.run(request, e);
-            first_node.set_prev_date(request.date);
-          }
-        }
-        else
-        {
-          run_scaled(first_node, e);
-        }
-    */
+
     first_node.set_executed(true);
     teardown_node(first_node, e);
   }
@@ -388,8 +377,7 @@ struct OSSIA_EXPORT graph_util
       n.disable();
       for (const outlet_ptr& out : node.first->outputs())
       {
-        if (out->data)
-          eggs::variants::apply(clear_data{}, out->data);
+        out->visit(clear_data{});
       }
     }
   }
@@ -412,8 +400,8 @@ struct OSSIA_EXPORT graph_util
                   [&](ossia::net::parameter_base* p2, bool) {
                     if (p1 == p2)
                       ok = true;
-                  });
-            });
+                  }, do_nothing_for_nodes{});
+            }, do_nothing_for_nodes{});
 
         if (ok)
           break;
@@ -435,6 +423,7 @@ struct OSSIA_EXPORT graph_base : graph_interface
 
   void recompute_maps()
   {
+    // TODO we should instead mark it for cleaning and do it once per tick ?
     m_nodes.clear();
     m_edges.clear();
     auto vertices = boost::vertices(m_graph);

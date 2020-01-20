@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ossia/dataflow/data.hpp>
+#include <ossia/dataflow/audio_port.hpp>
 #include <ossia/dataflow/graph_node.hpp>
 #include <ossia/detail/algorithms.hpp>
 #include <ossia/detail/pod_vector.hpp>
@@ -78,9 +78,4 @@ public:
 
   virtual ~mapped_audio_parameter();
 };
-
-OSSIA_EXPORT
-void do_fade(
-    bool start_discontinuous, bool end_discontinuous, audio_channel& ap,
-    std::size_t start, std::size_t end);
 }

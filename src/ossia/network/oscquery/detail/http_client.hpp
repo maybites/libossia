@@ -75,7 +75,7 @@ private:
     {
       asio::async_connect(
           m_socket, endpoints,
-          [self = shared_from_this()](const asio::error_code& err, auto&&) {
+          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
             self->handle_connect(err);
           });
     }
@@ -93,8 +93,8 @@ private:
       asio::const_buffer request(m_request.data(), m_request.size());
       asio::async_write(
           m_socket, request,
-          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
-            self->handle_write_request(err);
+          [self = shared_from_this()](const asio::error_code& err, std::size_t size) {
+            self->handle_write_request(err, size);
           });
     }
     else
@@ -104,14 +104,14 @@ private:
     }
   }
 
-  void handle_write_request(const asio::error_code& err)
+  void handle_write_request(const asio::error_code& err, std::size_t size)
   {
     if (!err)
     {
       asio::async_read_until(
           m_socket, m_response, "\r\n",
-          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
-            self->handle_read_status_line(err);
+          [self = shared_from_this()](const asio::error_code& err, std::size_t size) {
+            self->handle_read_status_line(err, size);
           });
     }
     else
@@ -121,7 +121,7 @@ private:
     }
   }
 
-  void handle_read_status_line(const asio::error_code& err)
+  void handle_read_status_line(const asio::error_code& err, std::size_t size)
   {
     if (!err)
     {
@@ -144,11 +144,38 @@ private:
         return;
       }
 
+      /* see issue #533
+       * there seems to be an issue with the asio::async_read_until calls (starting on line 111),
+       * reading in some cases the entire http reply messages in one go, including its header and contents,
+       * thus discarding the initial until "\r\n" condition and consequently the next function calls
+       * (it never reaches the necessary handle_read_headers() & handle_read_content() callbacks,
+       * and consequently, never reaches parsing as well). */
+      while (!response_stream.eof())
+      {
+          std::getline(response_stream, status_message);
+          // if 'blank' line, we expect the next one to be
+          // the reply's contents.
+          if (status_message.size() == 1)
+          {
+              // if we reach eof after blank line, just break.
+              if (response_stream.eof())
+                  break;
+              // if contents, get the rest of the stream.
+              // send and parse contents through m_fun;
+              status_message = std::string(std::istreambuf_iterator<char>(response_stream), {});
+              std::string contents;
+              contents.reserve(status_message.size()+16);
+              contents.assign(status_message);
+              m_fun(*this, contents);
+              return;
+          }
+      }
+
       // Read the response headers, which are terminated by a blank line.
       asio::async_read_until(
           m_socket, m_response, "\r\n\r\n",
-          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
-            self->handle_read_headers(err);
+          [self = shared_from_this()](const asio::error_code& err, std::size_t size) {
+            self->handle_read_headers(err, size);
           });
     }
     else
@@ -158,7 +185,7 @@ private:
     }
   }
 
-  void handle_read_headers(const asio::error_code& err)
+  void handle_read_headers(const asio::error_code& err, std::size_t size)
   {
     if (!err)
     {
@@ -171,8 +198,8 @@ private:
       // Start reading remaining data until EOF.
       asio::async_read(
           m_socket, m_response, asio::transfer_at_least(1),
-          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
-            self->handle_read_content(err);
+          [self = shared_from_this()](const asio::error_code& err, std::size_t size) {
+            self->handle_read_content(err, size);
           });
     }
     else
@@ -182,15 +209,15 @@ private:
     }
   }
 
-  void handle_read_content(const asio::error_code& err)
+  void handle_read_content(const asio::error_code& err, std::size_t size)
   {
     if (!err)
     {
       // Continue reading remaining data until EOF.
       asio::async_read(
           m_socket, m_response, asio::transfer_at_least(1),
-          [self = shared_from_this()](const asio::error_code& err, auto&&...) {
-            self->handle_read_content(err);
+          [self = shared_from_this()](const asio::error_code& err, std::size_t size) {
+            self->handle_read_content(err, size);
           });
     }
     else if (err != asio::error::eof)

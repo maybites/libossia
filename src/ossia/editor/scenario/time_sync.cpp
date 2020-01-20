@@ -2,6 +2,7 @@
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include <ossia/editor/scenario/time_interval.hpp>
 #include <ossia/editor/scenario/time_sync.hpp>
+#include <ossia/detail/algorithms.hpp>
 
 namespace ossia
 {
@@ -13,6 +14,7 @@ time_sync::time_sync()
   , m_evaluating{}
   , m_muted{}
   , m_autotrigger{}
+  , m_is_being_triggered{}
 {
 }
 

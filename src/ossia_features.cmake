@@ -12,7 +12,7 @@ if(IOS OR CMAKE_SYSTEM_NAME MATCHES Emscripten)
   set(OSSIA_PROTOCOL_SERIAL FALSE CACHE INTERNAL "")
 endif()
 
-if(NOT OSSIA_QT)
+if(NOT OSSIA_QML)
   set(OSSIA_PROTOCOL_HTTP FALSE CACHE INTERNAL "")
   set(OSSIA_PROTOCOL_WEBSOCKETS FALSE CACHE INTERNAL "")
   set(OSSIA_PROTOCOL_SERIAL FALSE CACHE INTERNAL "")
@@ -175,6 +175,12 @@ if (OSSIA_PROTOCOL_ARTNET)
   set(OSSIA_PROTOCOLS ${OSSIA_PROTOCOLS} artnet)
 endif()
 
+if (OSSIA_PROTOCOL_LIBMAPPER)
+    target_sources(ossia PRIVATE ${OSSIA_LIBMAPPER_SRCS} ${OSSIA_LIBMAPPER_HEADERS})
+    target_link_libraries(ossia PRIVATE mapper)
+    set(OSSIA_PROTOCOLS ${OSSIA_PROTOCOLS} libmapper)
+endif()
+
 
 # Additional features
 if(OSSIA_C)
@@ -193,28 +199,35 @@ if(OSSIA_CPP)
 endif()
 
 if(OSSIA_QT)
-  qt5_wrap_cpp(cur_moc "${CMAKE_CURRENT_SOURCE_DIR}/ossia-qt/qml_plugin.hpp" TARGET ossia)
-  target_sources(ossia PRIVATE ${cur_moc})
-
-  target_sources(ossia PRIVATE ${OSSIA_QT_HEADERS} ${OSSIA_QT_SRCS})
-  target_link_libraries(ossia PUBLIC Qt5::Core Qt5::Gui Qt5::Qml Qt5::Quick)
+  target_link_libraries(ossia PUBLIC Qt5::Core)
   target_include_directories(ossia
     PRIVATE
       "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ossia-qt>"
     PUBLIC
       $<BUILD_INTERFACE:${OSSIA_3RDPARTY_FOLDER}/verdigris/src>
    )
-  add_custom_target(ossia-qml-sources SOURCES ${OSSIA_QML_SRCS})
-  if(OSSIA_DISABLE_QT_PLUGIN)
-    target_compile_definitions(ossia PRIVATE OSSIA_DISABLE_QT_PLUGIN)
-  endif()
+ target_sources(ossia PRIVATE ${OSSIA_QT_HEADERS} ${OSSIA_QT_SRCS})
 
-  if(OSSIA_QML_DEVICE)
-    target_sources(ossia PRIVATE ${OSSIA_QT_DEVICE_HEADERS} ${OSSIA_QT_DEVICE_SRCS})
-  endif()
+  if(OSSIA_QML)
+    qt5_wrap_cpp(cur_moc "${CMAKE_CURRENT_SOURCE_DIR}/ossia-qt/qml_plugin.hpp" TARGET ossia)
+    target_sources(ossia PRIVATE ${cur_moc})
 
-  if(OSSIA_QML_SCORE)
-    target_sources(ossia PRIVATE ${OSSIA_QT_SCORE_HEADERS} ${OSSIA_QT_SCORE_SRCS})
+    target_sources(ossia PRIVATE ${OSSIA_QTQML_HEADERS} ${OSSIA_QTQML_SRCS})
+    target_link_libraries(ossia PUBLIC Qt5::Gui Qt5::Qml)
+    add_custom_target(ossia-qml-sources SOURCES ${OSSIA_QML_SRCS})
+    if(OSSIA_DISABLE_QT_PLUGIN)
+      target_compile_definitions(ossia PRIVATE OSSIA_DISABLE_QT_PLUGIN)
+    endif()
+
+    if(OSSIA_QML_DEVICE)
+      target_sources(ossia PRIVATE ${OSSIA_QT_DEVICE_HEADERS} ${OSSIA_QT_DEVICE_SRCS})
+      target_link_libraries(ossia PUBLIC Qt5::Quick)
+    endif()
+
+    if(OSSIA_QML_SCORE)
+      target_sources(ossia PRIVATE ${OSSIA_QT_SCORE_HEADERS} ${OSSIA_QT_SCORE_SRCS})
+      target_link_libraries(ossia PUBLIC Qt5::Quick)
+    endif()
   endif()
 endif()
 
@@ -225,6 +238,10 @@ endif()
 if(OSSIA_DATAFLOW)
   set(OSSIA_PARALLEL 1)
   target_link_libraries(ossia PRIVATE tbb)
+
+  target_include_directories(ossia PUBLIC
+    $<BUILD_INTERFACE:${OSSIA_3RDPARTY_FOLDER}/Flicks>
+  )
 
   target_sources(ossia PRIVATE ${OSSIA_DATAFLOW_HEADERS} ${OSSIA_DATAFLOW_SRCS})
 
@@ -260,6 +277,9 @@ if(OSSIA_DATAFLOW)
     target_link_libraries(ossia PUBLIC ${SDL_LIBRARY})
   endif()
 
+
+  target_link_libraries(ossia PUBLIC samplerate)
+  target_link_libraries(ossia PUBLIC rubberband)
   if(APPLE)
       find_library(Foundation_FK Foundation)
       find_library(AVFoundation_FK AVFoundation)
